@@ -489,10 +489,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const savedOrbitRef = useRef(null);
   // Pull a 3-tuple target out of a viewState whose target may be 2D
   // (OrthographicView) or 3D (OrbitView). Falls back to zeros so we
-  // never deref undefined when the views swap.
+  // never deref undefined when the views swap. CRITICAL: use isFinite
+  // not `??` — NaN passes through `??` and then poisons every downstream
+  // numeric (zoom, projection, SVG cx/cy) producing the "value 'NaN'
+  // cannot be parsed" flood.
+  const finite = (v, fb) => (typeof v === 'number' && isFinite(v) ? v : fb);
   const targetXYZ = (vs, fallbackZ = 0) => {
     const t = vs?.target;
-    if (Array.isArray(t)) return [t[0] ?? 0, t[1] ?? 0, t[2] ?? fallbackZ];
+    if (Array.isArray(t)) return [finite(t[0], 0), finite(t[1], 0), finite(t[2], fallbackZ)];
     return [0, 0, fallbackZ];
   };
   useEffect(() => {
@@ -976,6 +980,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     try {
       const vp = activeView.makeViewport({ width, height, viewState });
       const s = vp.project([x, y, surfaceZ]);
+      // Drop NaN/Infinity rather than passing it to SVG cx/cy attributes
+      // — the DOM rejects them and spams the console.
+      if (!isFinite(s[0]) || !isFinite(s[1])) return null;
       return [s[0], s[1]];
     } catch { return null; }
   };
@@ -2161,20 +2168,22 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               viewState={viewState}
               onViewStateChange={({ viewState: vs }) => setViewState((cur) => {
                 // OrthographicView's viewState can hand back a 2-tuple
-                // target; the OrbitView path expects 3-tuple. Normalise so
-                // downstream reads of target[2] don't blow up after the
-                // view swap.
+                // target; the OrbitView path expects 3-tuple. Normalise and
+                // strip any NaN values — once NaN gets into viewState it
+                // poisons every subsequent projection and floods the
+                // console with "value 'NaN' cannot be parsed" errors.
                 const ct = Array.isArray(cur.target) ? cur.target : [];
                 const vt = Array.isArray(vs.target) ? vs.target : [];
                 const target = [
-                  vt[0] ?? ct[0] ?? 0,
-                  vt[1] ?? ct[1] ?? 0,
-                  vt[2] ?? ct[2] ?? 0,
+                  finite(vt[0], finite(ct[0], 0)),
+                  finite(vt[1], finite(ct[1], 0)),
+                  finite(vt[2], finite(ct[2], 0)),
                 ];
                 return {
                   ...cur, ...vs, target,
-                  rotationX: clampX(vs.rotationX ?? cur.rotationX ?? 55),
-                  rotationOrbit: vs.rotationOrbit ?? cur.rotationOrbit ?? 0,
+                  zoom: finite(vs.zoom, finite(cur.zoom, 0)),
+                  rotationX: clampX(finite(vs.rotationX, finite(cur.rotationX, 55))),
+                  rotationOrbit: finite(vs.rotationOrbit, finite(cur.rotationOrbit, 0)),
                 };
               })}
               onInteractionStateChange={(s) => setInteracting(!!(s.isDragging || s.isPanning || s.isRotating || s.isZooming))}
