@@ -3,6 +3,7 @@
 // clamped above ground (no underground view). A static Mapbox basemap can be
 // pinned to the ground, hidden while you're rotating and re-shown when idle.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import DeckGL from '@deck.gl/react';
 import { COORDINATE_SYSTEM, OrbitView, OrthographicView, LightingEffect, AmbientLight, DirectionalLight } from '@deck.gl/core';
 import { PolygonLayer, PathLayer, BitmapLayer, TextLayer, IconLayer, ScatterplotLayer } from '@deck.gl/layers';
@@ -243,7 +244,16 @@ const flatLighting = new LightingEffect({
   dir1: new DirectionalLight({ color: [255, 255, 255], intensity: 0.35, direction: [-2, -6, -3], _shadow: false }),
 });
 
-export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitChange }) {
+export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitChange,
+                                       // V2 portals: when these DOM nodes are provided
+                                       // (as state, via a ref callback), the
+                                       // Customization panel and Camera-tour <details>
+                                       // are rendered into those nodes instead of as
+                                       // absolute overlays on the canvas. Lets the V2
+                                       // page surface the panels inside its left
+                                       // sidebar without lifting the state out.
+                                       customizationTarget = null,
+                                       tourTarget = null }) {
   const show = (k) => chrome[k] !== false;
   const [showBuildings, setShowBuildings] = useState(true);
   const [showRoads, setShowRoads] = useState(true);
@@ -3146,7 +3156,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       )}
 
       {show('layers') && (
-        <LayersPanel items={[
+        <LayersPanel portalTarget={customizationTarget} items={[
           { label: 'Free orbit 3D', checked: !!freeOrbit, onChange: (v) => onFreeOrbitChange?.(v) },
           { label: 'Buildings', checked: showBuildings, onChange: setShowBuildings },
           { label: 'Podium (ground floor)', checked: showPodium, onChange: setShowPodium },
@@ -3750,72 +3760,32 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             (Off = buildings can hide the number; turn the camera to see it)
           </div>
 
-          {/* Embedded "Camera tour" section — native <details> accordion,
-              styled to match the warm light Customization theme. */}
+          {/* Camera tour section. When V2 provides a separate tourTarget,
+              this <details> moves there via portal; otherwise stays
+              inline so the classic page still has it. */}
           <details style={{ marginTop: 14, borderTop: '1px solid var(--line)',
-                            paddingTop: 6 }}>
+                            paddingTop: 6,
+                            display: tourTarget ? 'none' : 'block' }}>
             <summary style={{ cursor: 'pointer', padding: '4px 0',
                               fontWeight: 600, color: '#3a342c',
                               userSelect: 'none', fontSize: 12,
                               letterSpacing: 0.4 }}>
               ▶ Camera tour
             </summary>
-            <div style={{ paddingTop: 6, display: 'flex', flexDirection: 'column' }}>
-              {[
-                ['Min tilt',          'minTilt',       0, 89,  1, '°'],
-                ['Optimal tilt',      'optTilt',       0, 89,  1, '°'],
-                ['Max tilt',          'maxTilt',       0, 89,  1, '°'],
-                ['Tilt speed',        'tiltSpeed',     1, 120, 1, '°/s'],
-                ['Rotation speed',    'rotSpeed',      1, 180, 1, '°/s'],
-                ['Expanded zoom',     'expandedZoom', -3,  6, 0.1, ''],
-                ['Collapsed zoom',    'collapsedZoom',-3,  6, 0.1, ''],
-                ['Wait at each pose', 'waitSec',       0, 30, 0.5, 's'],
-              ].map(([label, key, mn, mx, st, sx]) => (
-                <label key={key} style={{ display: 'flex', justifyContent: 'space-between',
-                                          alignItems: 'center', gap: 8, fontSize: 12,
-                                          padding: '3px 0', color: '#3a342c' }}>
-                  <span>{label}</span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <input type="number" step={st} min={mn} max={mx}
-                           value={flyConfig[key] ?? ''}
-                           onChange={(e) => setFlyConfig((c) => ({ ...c, [key]: Number(e.target.value) }))}
-                           style={{ width: 64, fontSize: 12, padding: '2px 4px',
-                                    textAlign: 'right',
-                                    border: '1px solid var(--line)', borderRadius: 3 }} />
-                    {sx && <span style={{ color: '#6f685c', fontSize: 11 }}>{sx}</span>}
-                  </span>
-                </label>
-              ))}
-              <label style={{ display: 'flex', alignItems: 'center', gap: 7,
-                              padding: '6px 0', cursor: 'pointer', fontSize: 12,
-                              color: '#3a342c' }}>
-                <input type="checkbox" checked={!!flyConfig.collapseAtMaxTilt}
-                       onChange={(e) => setFlyConfig((c) => ({ ...c, collapseAtMaxTilt: e.target.checked }))} />
-                <span>Collapse layers at max tilt</span>
-              </label>
-              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                {flyPlaying ? (
-                  <button onClick={() => { if (flyAbortRef.current) flyAbortRef.current(); flyAbortRef.current = null; }}
-                          style={{ flex: 1, padding: '8px 12px', border: '1px solid #b03030',
-                                   background: '#b03030', color: '#fff', borderRadius: 4,
-                                   cursor: 'pointer', fontWeight: 600 }}>
-                    ■ Stop
-                  </button>
-                ) : (
-                  <button onClick={() => {
-                            if (flyAbortRef.current) flyAbortRef.current();
-                            flyAbortRef.current = runFlyThrough(flyConfig);
-                          }}
-                          style={{ flex: 1, padding: '8px 12px', border: '1px solid #2f6f3e',
-                                   background: '#2f6f3e', color: '#fff', borderRadius: 4,
-                                   cursor: 'pointer', fontWeight: 600 }}>
-                    ▶ Play
-                  </button>
-                )}
-              </div>
-            </div>
+            <CameraTourBody flyConfig={flyConfig} setFlyConfig={setFlyConfig}
+                            flyPlaying={flyPlaying} flyAbortRef={flyAbortRef}
+                            runFlyThrough={runFlyThrough} />
           </details>
         </LayersPanel>
+      )}
+      {/* Camera tour rendered separately into V2's left sidebar (Animation
+          group) when tourTarget is provided. The JSX stays inside this
+          component so all state setters keep working. */}
+      {tourTarget && createPortal(
+        <CameraTourBody flyConfig={flyConfig} setFlyConfig={setFlyConfig}
+                        flyPlaying={flyPlaying} flyAbortRef={flyAbortRef}
+                        runFlyThrough={runFlyThrough} />,
+        tourTarget,
       )}
       {show('legend') && <Legend geo={geo} />}
 
@@ -3946,6 +3916,68 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 // XYZ orientation gizmo: Y-up convention (matches Three.js / the user's reference).
 // X = east (red), Y = up (green), Z = north (blue). Three coloured arrows with
 // triangle tips and labels at the tips. Click an axis to align the view.
+// Body of the Camera-tour controls. Shared between the inline <details>
+// (classic page) and the V2 left-sidebar portal mount so the JSX has
+// exactly one source of truth.
+function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runFlyThrough }) {
+  return (
+    <div style={{ paddingTop: 6, display: 'flex', flexDirection: 'column' }}>
+      {[
+        ['Min tilt',          'minTilt',       0, 89,  1, '°'],
+        ['Optimal tilt',      'optTilt',       0, 89,  1, '°'],
+        ['Max tilt',          'maxTilt',       0, 89,  1, '°'],
+        ['Tilt speed',        'tiltSpeed',     1, 120, 1, '°/s'],
+        ['Rotation speed',    'rotSpeed',      1, 180, 1, '°/s'],
+        ['Expanded zoom',     'expandedZoom', -3,  6, 0.1, ''],
+        ['Collapsed zoom',    'collapsedZoom',-3,  6, 0.1, ''],
+        ['Wait at each pose', 'waitSec',       0, 30, 0.5, 's'],
+      ].map(([label, key, mn, mx, st, sx]) => (
+        <label key={key} style={{ display: 'flex', justifyContent: 'space-between',
+                                  alignItems: 'center', gap: 8, fontSize: 12,
+                                  padding: '3px 0', color: '#3a342c' }}>
+          <span>{label}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="number" step={st} min={mn} max={mx}
+                   value={flyConfig[key] ?? ''}
+                   onChange={(e) => setFlyConfig((c) => ({ ...c, [key]: Number(e.target.value) }))}
+                   style={{ width: 64, fontSize: 12, padding: '2px 4px',
+                            textAlign: 'right',
+                            border: '1px solid var(--line)', borderRadius: 3 }} />
+            {sx && <span style={{ color: '#6f685c', fontSize: 11 }}>{sx}</span>}
+          </span>
+        </label>
+      ))}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 7,
+                      padding: '6px 0', cursor: 'pointer', fontSize: 12,
+                      color: '#3a342c' }}>
+        <input type="checkbox" checked={!!flyConfig.collapseAtMaxTilt}
+               onChange={(e) => setFlyConfig((c) => ({ ...c, collapseAtMaxTilt: e.target.checked }))} />
+        <span>Collapse layers at max tilt</span>
+      </label>
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        {flyPlaying ? (
+          <button onClick={() => { if (flyAbortRef.current) flyAbortRef.current(); flyAbortRef.current = null; }}
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #b03030',
+                           background: '#b03030', color: '#fff', borderRadius: 4,
+                           cursor: 'pointer', fontWeight: 600 }}>
+            ■ Stop
+          </button>
+        ) : (
+          <button onClick={() => {
+                    if (flyAbortRef.current) flyAbortRef.current();
+                    flyAbortRef.current = runFlyThrough(flyConfig);
+                  }}
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #2f6f3e',
+                           background: '#2f6f3e', color: '#fff', borderRadius: 4,
+                           cursor: 'pointer', fontWeight: 600 }}>
+            ▶ Play
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Gizmo3D({ bearing, pitch, onSet }) {
   const L = 26, HEAD = 6;
   // Bake any non-finite input (NaN from a transient view-swap, undefined

@@ -103,14 +103,16 @@ function ProjectViewPage({ projectId }) {
   const [activeToc, setActiveToc] = useState('layers/bike-lanes');
   // Friendly project name for the breadcrumb (lazy fetch).
   const [projectName, setProjectName] = useState(projectId);
-  // Geometry + chrome for the embedded canvas. chrome controls which of
-  // DeckOrbit3D's built-in overlay widgets render; we leave them all
-  // visible so the page is fully functional with the canvas. Future
-  // iterations can hide overlays and reproduce them as sidebar-native
-  // components.
+  // Geometry + chrome for the embedded canvas.
   const [geo, setGeo] = useState(null);
   const [chrome] = useState({ legend: false });
   const [freeOrbit, setFreeOrbit] = useState(true);
+  // Portal targets for the left sidebar. The state-as-ref-callback
+  // pattern (vs useRef) is important: it triggers a re-render of
+  // DeckOrbit3D the moment the target div mounts, so createPortal
+  // sees a valid DOM node instead of null.
+  const [customizationTarget, setCustomizationTarget] = useState(null);
+  const [tourTarget,          setTourTarget]          = useState(null);
 
   // Tell the fetch interceptor in main.jsx which project to talk to.
   useEffect(() => {
@@ -135,7 +137,9 @@ function ProjectViewPage({ projectId }) {
 
   return (
     <div className="v2-root">
-      <AppSidebar open={open} setOpen={setOpen} active={active} setActive={setActive} />
+      <AppSidebar open={open} setOpen={setOpen} active={active} setActive={setActive}
+                  customizationRef={setCustomizationTarget}
+                  tourRef={setTourTarget} />
       <SidebarInset open={open} rightOpen={rightOpen}>
         <header className="v2-header">
           <button className="v2-icon-btn"
@@ -166,7 +170,9 @@ function ProjectViewPage({ projectId }) {
             <div className="v2-canvas-frame">
               <DeckOrbit3D geo={geo} chrome={chrome}
                            freeOrbit={freeOrbit}
-                           onFreeOrbitChange={setFreeOrbit} />
+                           onFreeOrbitChange={setFreeOrbit}
+                           customizationTarget={open ? customizationTarget : null}
+                           tourTarget={open ? tourTarget : null} />
             </div>
           )}
         </main>
@@ -178,6 +184,10 @@ function ProjectViewPage({ projectId }) {
 
 // ---------- Sidebar ----------------------------------------------------------
 
+// Only the Workspace group is regular nav. Customization + Animation
+// groups are portal hosts — DeckOrbit3D mounts its LayersPanel content
+// into customizationRef, and its Camera-tour <details> body into
+// tourRef, via React portals.
 const NAV_GROUPS = [
   {
     label: 'Workspace',
@@ -187,23 +197,9 @@ const NAV_GROUPS = [
       { key: 'views',      label: 'Saved views',  icon: 'star'    },
     ],
   },
-  {
-    label: 'Customization',
-    items: [
-      { key: 'layers',     label: 'Layers',       icon: 'layers'  },
-      { key: 'props',      label: 'Props library', icon: 'package' },
-      { key: 'colours',    label: 'Colours',      icon: 'palette' },
-    ],
-  },
-  {
-    label: 'Animation',
-    items: [
-      { key: 'tour',       label: 'Camera tour',  icon: 'play'    },
-    ],
-  },
 ];
 
-function AppSidebar({ open, setOpen, active, setActive }) {
+function AppSidebar({ open, setOpen, active, setActive, customizationRef, tourRef }) {
   return (
     <aside className={`v2-sidebar ${open ? 'is-open' : 'is-collapsed'}`}
            style={{ width: open ? SIDEBAR_W_OPEN : SIDEBAR_W_COLLAPSED }}>
@@ -223,6 +219,22 @@ function AppSidebar({ open, setOpen, active, setActive }) {
           <SidebarGroup key={g.label} group={g} open={open}
                         active={active} setActive={setActive} />
         ))}
+        {open && (
+          <div className="v2-sb-group">
+            <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
+              <span>Customization</span>
+            </div>
+            <div className="v2-sb-portal" ref={customizationRef} />
+          </div>
+        )}
+        {open && (
+          <div className="v2-sb-group">
+            <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
+              <span>Camera tour</span>
+            </div>
+            <div className="v2-sb-portal" ref={tourRef} />
+          </div>
+        )}
       </div>
       <div className="v2-sidebar-footer">
         {open ? (

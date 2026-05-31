@@ -1,6 +1,7 @@
 // Shared view chrome used across all renders: height legend, zoom buttons,
 // compass, save-settings button, and a per-view settings.json persistence hook.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { HEIGHT_CATEGORIES, UNKNOWN_COLOR } from './geo.js';
 
 // ---------- settings.json (namespaced per view) ----------
@@ -308,7 +309,31 @@ function ChevDoubleHoriz({ dir = 'left', size = 13 }) {
 // Customization panel (collapsible to the left). `items` are checkboxes;
 // `children` adds extra controls below them.
 export function LayersPanel({ items = [], children, title = 'Customization',
-                              open, onOpenChange, left = 16, hideCollapseTab = false }) {
+                              open, onOpenChange, left = 16, hideCollapseTab = false,
+                              flat = false, portalTarget = null }) {
+  // `flat` mode (or any time a portalTarget is provided): render just the
+  // items + children with no absolute positioning, header chrome, or
+  // collapse logic. When portalTarget is also set, render that flat
+  // content into the target DOM node via React portal so the panel can
+  // live anywhere on the page (e.g. inside V2's left sidebar) while the
+  // state and event handlers stay inside DeckOrbit3D.
+  if (flat || portalTarget) {
+    const flatContent = (
+      <div style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: '#3a342c' }}>
+        {items.map((it) => (
+          <label key={it.label}
+                 style={{ display: 'flex', alignItems: 'center', gap: 7,
+                          padding: '2px 0', cursor: 'pointer',
+                          paddingLeft: it.indent ? 16 : 0 }}>
+            <input type="checkbox" checked={it.checked} onChange={(e) => it.onChange(e.target.checked)} />
+            {it.label}
+          </label>
+        ))}
+        {children}
+      </div>
+    );
+    return portalTarget ? createPortal(flatContent, portalTarget) : flatContent;
+  }
   // Controlled if `open` is provided; otherwise falls back to local state
   // (collapsed by default). Lets a parent (e.g. the unified left sidebar)
   // own the collapse state for the whole side rail.

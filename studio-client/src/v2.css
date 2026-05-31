@@ -88,6 +88,12 @@ body {
 .v2-sidebar.is-collapsed .v2-sb-item { justify-content: center; padding: 8px 0; }
 .v2-sidebar.is-collapsed .v2-sb-group-label { display: none; }
 
+/* Portal hosts inside the sidebar receive the Customization panel and
+   the Camera-tour body from DeckOrbit3D via React portal. Constrain font
+   size so panel content stays readable in the narrower sidebar. */
+.v2-sb-portal { padding: 4px 8px 8px; font-size: 12px; color: var(--v2-fg); }
+.v2-sb-portal label { color: var(--v2-fg); }
+
 .v2-sidebar-footer {
   border-top: 1px solid var(--v2-border);
   padding: 10px 12px;
