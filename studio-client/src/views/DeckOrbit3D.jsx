@@ -807,7 +807,17 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         cx /= polygon.length; cy /= polygon.length;
         return { id: layer.id, name: layer.name, polygon, centroid: [cx, cy], count: items.length };
       }
-      const pts = items.map((p) => [p.position[0], p.position[1]]);
+      // Items are heterogeneous: point-type props have `position`, bike
+      // lanes have `path`, beach / sea polygon-type props have `polygon`.
+      // Flatten every shape to a list of XY tuples so the convex hull
+      // includes them all — and so reading `p.position[0]` doesn't throw
+      // for the path / polygon variants (which have no `position`).
+      const pts = items.flatMap((p) => {
+        if (Array.isArray(p.position)) return [[p.position[0], p.position[1]]];
+        if (Array.isArray(p.path)) return p.path.map(([x, y]) => [x, y]);
+        if (Array.isArray(p.polygon)) return p.polygon.map(([x, y]) => [x, y]);
+        return [];
+      });
       let polygon;
       if (pts.length >= 3) {
         const hull = convexHull(pts);
