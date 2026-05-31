@@ -3257,8 +3257,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             const savedDisplay = savedViews.map((v) => ({
               id: v.id, name: `3D ${v.name}`,
               onSelect: () => applyView(v),
+              canDelete: true,
             }));
-            const items = [...builtIns, ...savedDisplay];
+            // Built-ins with a user override get a "reset" affordance.
+            const itemsWithReset = builtIns.map((b) => ({
+              ...b, canReset: !!viewOverrides[b.id],
+            }));
+            const items = [...itemsWithReset, ...savedDisplay];
             return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6,
                           alignItems: 'flex-start' }}>
@@ -3269,20 +3274,55 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                   {items.map((view) => {
                     const checked = selectedViewId === view.id;
                     return (
-                      <label key={view.id}
-                             style={{ display: 'flex', alignItems: 'center', gap: 6,
-                                      cursor: 'pointer', userSelect: 'none',
-                                      fontSize: 12, color: '#09090b',
-                                      textShadow: '0 0 6px rgba(255,255,255,0.85), 0 0 2px rgba(255,255,255,0.85)' }}
-                             title={`Apply ${view.name}`}>
-                        <input type="radio" name="saved-views"
-                               checked={checked}
-                               onChange={() => { setSelectedViewId(view.id); view.onSelect(); }}
-                               style={{ margin: 0, cursor: 'pointer' }} />
-                        <span style={{ whiteSpace: 'nowrap' }}>
-                          {view.name}
-                        </span>
-                      </label>
+                      <div key={view.id}
+                           style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6,
+                                        cursor: 'pointer', userSelect: 'none',
+                                        fontSize: 12, color: '#09090b', flex: 1,
+                                        textShadow: '0 0 6px rgba(255,255,255,0.85), 0 0 2px rgba(255,255,255,0.85)' }}
+                               title={`Apply ${view.name}`}>
+                          <input type="radio" name="saved-views"
+                                 checked={checked}
+                                 onChange={() => { setSelectedViewId(view.id); view.onSelect(); }}
+                                 style={{ margin: 0, cursor: 'pointer' }} />
+                          <span style={{ whiteSpace: 'nowrap' }}>
+                            {view.name}
+                          </span>
+                        </label>
+                        {view.canDelete && (
+                          <button onClick={() => {
+                                    if (window.confirm(`Delete view "${view.name.replace(/^3D /, '')}"?`)) {
+                                      setSavedViews((vs) => vs.filter((x) => x.id !== view.id));
+                                      if (selectedViewId === view.id) setSelectedViewId(null);
+                                    }
+                                  }}
+                                  title="Delete this view"
+                                  style={{ pointerEvents: 'auto',
+                                           border: 'none', background: 'transparent',
+                                           padding: '0 4px', cursor: 'pointer',
+                                           color: '#b03030', fontSize: 14, lineHeight: 1,
+                                           textShadow: '0 0 6px rgba(255,255,255,0.85), 0 0 2px rgba(255,255,255,0.85)' }}>
+                            ×
+                          </button>
+                        )}
+                        {view.canReset && (
+                          <button onClick={() => {
+                                    setViewOverrides((o) => {
+                                      const n = { ...o };
+                                      delete n[view.id];
+                                      return n;
+                                    });
+                                  }}
+                                  title="Reset to the factory default"
+                                  style={{ pointerEvents: 'auto',
+                                           border: 'none', background: 'transparent',
+                                           padding: '0 4px', cursor: 'pointer',
+                                           color: '#6f685c', fontSize: 12, lineHeight: 1,
+                                           textShadow: '0 0 6px rgba(255,255,255,0.85), 0 0 2px rgba(255,255,255,0.85)' }}>
+                            ↻
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
