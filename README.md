@@ -18,9 +18,14 @@ Each folder has its own README with full details:
 
 - [studio-client/](studio-client/README.md) — frontend, deploys to
   https://nurrrrx.github.io/studio-plus/
-- [studio-server/](studio-server/README.md) — backend, deploys to Railway
-  project `studio+` (service `studio-plus-server`), sharing the existing
-  Postgres under a `studio_plus` schema
+- [studio-server/](studio-server/README.md) — backend, deploys to
+  https://studio-plus-server-production.up.railway.app (Railway project
+  `studio+`, service `studio-plus-server`, sharing the existing Postgres
+  under a `studio_plus` schema)
+
+Both halves **auto-deploy on push to `main`** — GH Actions for the
+client, Railway's GitHub integration (with a `studio-server/**` watch
+filter) for the server.
 
 ## How the two halves connect
 
@@ -48,10 +53,15 @@ Each folder has its own README with full details:
 ## Common tasks
 
 ```bash
-# Push new client code → auto-deploys to GH Pages
+# Ship anything → just push. GH Actions builds the client; Railway
+# rebuilds the server iff the push touched studio-server/**.
 git push origin main
 
-# Re-deploy the server after editing studio-server/
+# Confirm the server actually rolled forward (bump version first):
+curl https://studio-plus-server-production.up.railway.app/version
+
+# Force a manual server deploy (uncommitted local code or auto-deploy
+# disabled):
 cd studio-server && railway up
 
 # Run both locally
