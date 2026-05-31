@@ -470,7 +470,17 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const layerHulls = useMemo(() => {
     return propLayers.map((layer) => {
       const items = propsItems.filter((p) => p.layerId === layer.id);
-      if (items.length === 0) return null;
+      if (items.length === 0 && !(layer.polygon && layer.polygon.length >= 3)) return null;
+      // If the layer carries a polygon (saved from a polygon-fill operation),
+      // render that exact shape — otherwise fall back to a convex hull of
+      // whatever props happen to be in the layer.
+      if (layer.polygon && layer.polygon.length >= 3) {
+        const polygon = layer.polygon.map(([x, y]) => [x, y]);
+        let cx = 0, cy = 0;
+        for (const [x, y] of polygon) { cx += x; cy += y; }
+        cx /= polygon.length; cy /= polygon.length;
+        return { id: layer.id, name: layer.name, polygon, centroid: [cx, cy], count: items.length };
+      }
       const pts = items.map((p) => [p.position[0], p.position[1]]);
       let polygon;
       if (pts.length >= 3) {
@@ -740,6 +750,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       }
     }
     if (newProps.length) setPropsItems((p) => [...p, ...newProps]);
+    // If the user was filling INTO a custom layer, remember the polygon they
+    // drew. The Show-layer-polygons toggle then renders THAT exact shape
+    // instead of a convex hull around the placed props.
+    if (activeLayerId) {
+      const poly = fillPolygon.map(([x, y]) => [x, y]);
+      setPropLayers((layers) => layers.map((l) => l.id === activeLayerId ? { ...l, polygon: poly } : l));
+    }
     setFillMode('idle'); setFillPolygon([]);
   };
 
@@ -2357,6 +2374,22 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                       <b>{i + 1}.</b> {l.name}
                     </span>
                     <span style={{ fontSize: 10, color: '#6f685c' }}>{count}</span>
+                    {l.polygon && l.polygon.length >= 3 && (
+                      <button onClick={() => {
+                                setActiveLayerId(l.id);
+                                setFillPolygon(l.polygon.map(([x, y]) => [x, y]));
+                                setFillMode('config');
+                                // close any conflicting modes
+                                setPlaceMode(null); setDeleteMode(false);
+                                setMoveMode(false); setMovingPropId(null);
+                                setSelectMode(false); setSelectedPropId(null);
+                              }}
+                              title="add more props into this layer's polygon"
+                              style={{ fontSize: 10, padding: '1px 5px', border: '1px solid var(--line)',
+                                       background: '#fff', borderRadius: 3, cursor: 'pointer', color: '#2f6f3e' }}>
+                        + Add
+                      </button>
+                    )}
                     <button onClick={() => {
                               const nn = prompt('Rename layer', l.name);
                               if (nn && nn.trim()) {
