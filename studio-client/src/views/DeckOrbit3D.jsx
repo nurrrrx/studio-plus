@@ -1683,13 +1683,20 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const z = surfaceZ + (idx + 1) * layerExplodeGap - 0.04 + t.dz;
       const polygon = h.polygon.map(([x, y]) => [x + t.dx, y + t.dy]);
       const centroid = [h.centroid[0] + t.dx, h.centroid[1] + t.dy];
+      // Left-edge anchor: smallest X in the polygon, at the slab's
+      // vertical centre. Label sits to the LEFT of this point (via
+      // getTextAnchor:'end') so it always hangs off the left side of
+      // every layer, regardless of slab shape or rotation.
+      let minX = Infinity;
+      for (const [x] of polygon) if (x < minX) minX = x;
+      const leftAnchor = [Number.isFinite(minX) ? minX : centroid[0], centroid[1]];
       // Layer's own picked colour wins; otherwise rotate through the palette.
       const color = layer?.color ? hexRgb(layer.color) : PALETTE[idx % PALETTE.length];
       // Per-layer alpha (0..1) controls slab fill transparency. Default
       // 0.5 keeps the existing translucent look; setting it to 0 makes
       // that layer's slab effectively invisible (outline only).
       const alpha01 = typeof layer?.alpha === 'number' ? Math.max(0, Math.min(1, layer.alpha)) : 0.5;
-      return { ...h, idx, z, color, polygon, centroid, alpha01 };
+      return { ...h, idx, z, color, polygon, centroid, leftAnchor, alpha01 };
     });
     const slabLayer = new PolygonLayer({
       id: 'layer-slabs', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
@@ -2389,9 +2396,15 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     layers.push(new TextLayer({
       id: 'layer-labels', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
       data: layerLabelData,
-      getPosition: (d) => [d.centroid[0], d.centroid[1], d.z + Math.max(3, layerExplodeGap * 0.4)],
+      // Anchor at the leftmost edge of each slab; the label grows
+      // leftward from that point (getTextAnchor:'end') so the name
+      // hangs off the left side of every layer.
+      getPosition: (d) => [d.leftAnchor[0], d.leftAnchor[1], d.z + Math.max(3, layerExplodeGap * 0.4)],
       getText: (d) => d.name,
       getSize: 14, getColor: (d) => [...d.color, 255],
+      getTextAnchor: 'end', getAlignmentBaseline: 'center',
+      // Nudge a few pixels further left so text doesn't kiss the slab edge.
+      getPixelOffset: [-8, 0],
       billboard: true,
       fontSettings: { sdf: true },
       outlineColor: [255, 255, 255, 240], outlineWidth: 4,
