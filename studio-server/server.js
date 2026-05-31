@@ -20,8 +20,16 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import jwt from 'jsonwebtoken';
 import pg from 'pg';
+
+const PKG = JSON.parse(fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), 'package.json'),
+  'utf8',
+));
 
 const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL;
@@ -126,6 +134,7 @@ const rowToProject = (r) => r && ({
 
 // --- Routes --------------------------------------------------------------
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
+app.get('/version', (_req, res) => res.json({ name: PKG.name, version: PKG.version }));
 
 app.get('/api/projects', async (_req, res, next) => {
   try {
