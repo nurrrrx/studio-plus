@@ -1,8 +1,16 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
+import AppV2 from './AppV2.jsx';
 import './styles.css';
 import { getToken } from './api.js';
+
+// Decide which top-level layout to render based on the URL. The /v2/
+// path is served by v2/index.html (built as a separate Vite entry but
+// pointing at this same main.jsx), so when the bundle boots there we
+// switch to AppV2. Everywhere else, classic App.
+const PATH = typeof window !== 'undefined' ? window.location.pathname : '';
+const IS_V2 = /\/v2\/?$/.test(PATH);
 
 // In production the dev /api/settings middleware doesn't exist. Route those
 // calls to the studio+ backend (per current project), or fall back to the
@@ -56,6 +64,6 @@ if (import.meta.env.PROD) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    {IS_V2 ? <AppV2 /> : <App />}
   </React.StrictMode>
 );

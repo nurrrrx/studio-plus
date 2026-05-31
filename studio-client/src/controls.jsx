@@ -321,18 +321,15 @@ export function LayersPanel({ items = [], children, title = 'Customization',
   const headerTop = 'calc(var(--header-inset, 0px) + 16px)';
 
   if (collapsed) {
-    // When the parent rail manages its own toggle, suppress the legacy
-    // chevron tab so we don't get two collapse affordances.
     if (hideCollapseTab) return null;
     return (
       <button onClick={() => setCollapsed(false)}
               title="show customization"
               style={{ position: 'absolute', left: 0, top: headerTop, zIndex: 6,
-                       background: '#09090b', border: '1px solid #27272a',
-                       borderLeft: 'none', borderRadius: 0, padding: '8px 6px',
-                       cursor: 'pointer', color: '#fafafa',
-                       display: 'flex', alignItems: 'center',
-                       boxShadow: '0 1px 5px rgba(0,0,0,0.45)' }}
+                       background: 'rgba(255,255,255,0.94)', border: '1px solid var(--line)',
+                       borderLeft: 'none', borderRadius: '0 6px 6px 0', padding: '8px 6px',
+                       cursor: 'pointer', color: '#3a342c', display: 'flex', alignItems: 'center',
+                       boxShadow: '0 1px 5px rgba(0,0,0,0.1)' }}
               onMouseDown={(e) => e.stopPropagation()}>
         <ChevDoubleHoriz dir="right" />
       </button>
@@ -341,31 +338,28 @@ export function LayersPanel({ items = [], children, title = 'Customization',
   return (
     <div style={{ position: 'absolute', left, top: headerTop, zIndex: 6, fontSize: 12,
                   maxHeight: 'calc(100% - var(--header-inset, 0px) - var(--footer-inset, 0px) - 32px)',
-                  overflowY: 'auto',
-                  background: '#09090b',
-                  color: '#fafafa',
-                  border: '1px solid #27272a',
-                  borderRadius: 0, padding: '0 14px 10px 14px',
-                  boxShadow: '0 1px 5px rgba(0,0,0,0.45)',
+                  overflowY: 'auto', background: 'rgba(255,255,255,0.94)', border: '1px solid var(--line)',
+                  borderRadius: 6, padding: '0 14px 10px 14px', boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
                   width: 320, maxWidth: '70vw',
                   transition: 'transform 0.18s ease' }}
          onMouseDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
       <div style={{ position: 'sticky', top: 0, zIndex: 2,
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     margin: '0 -14px 8px -14px', padding: '8px 14px',
-                    background: '#18181b',
-                    borderBottom: '1px solid #27272a' }}>
-        <div style={{ fontWeight: 600, color: '#fafafa', fontSize: 12, letterSpacing: 0.3 }}>{title}</div>
+                    background: 'rgba(58, 62, 70, 0.97)',
+                    borderBottom: '1px solid #1f2937',
+                    backdropFilter: 'saturate(140%) blur(4px)' }}>
+        <div style={{ fontWeight: 600, color: '#f1f5f9', fontSize: 12, letterSpacing: 0.3 }}>{title}</div>
         <button onClick={() => setCollapsed(true)}
                 title="collapse to the left"
                 style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-                         color: '#a1a1aa', padding: 0, display: 'flex', alignItems: 'center' }}>
+                         color: '#cbd5e1', padding: 0, display: 'flex', alignItems: 'center' }}>
           <ChevDoubleHoriz dir="left" />
         </button>
       </div>
       {items.map((it) => (
         <label key={it.label} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0', cursor: 'pointer',
-                                       color: '#fafafa', paddingLeft: it.indent ? 16 : 0 }}>
+                                       color: '#3a342c', paddingLeft: it.indent ? 16 : 0 }}>
           <input type="checkbox" checked={it.checked} onChange={(e) => it.onChange(e.target.checked)} />
           {it.label}
         </label>

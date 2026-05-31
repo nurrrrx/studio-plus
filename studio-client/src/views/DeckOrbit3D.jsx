@@ -3750,16 +3750,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             (Off = buildings can hide the number; turn the camera to see it)
           </div>
 
-          {/* Embedded "Camera tour" section — same sidebar (shadcn
-              sidebar-12 style: UI controls live inside the sidebar). The
-              <details> tag gives us a native accordion: click the header
-              to collapse / expand the tour controls. */}
-          <details style={{ marginTop: 14, borderTop: '1px solid #27272a',
+          {/* Embedded "Camera tour" section — native <details> accordion,
+              styled to match the warm light Customization theme. */}
+          <details style={{ marginTop: 14, borderTop: '1px solid var(--line)',
                             paddingTop: 6 }}>
             <summary style={{ cursor: 'pointer', padding: '4px 0',
-                              fontWeight: 600, color: '#fafafa',
+                              fontWeight: 600, color: '#3a342c',
                               userSelect: 'none', fontSize: 12,
-                              letterSpacing: 0.4, listStyle: 'none' }}>
+                              letterSpacing: 0.4 }}>
               ▶ Camera tour
             </summary>
             <div style={{ paddingTop: 6, display: 'flex', flexDirection: 'column' }}>
@@ -3775,7 +3773,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               ].map(([label, key, mn, mx, st, sx]) => (
                 <label key={key} style={{ display: 'flex', justifyContent: 'space-between',
                                           alignItems: 'center', gap: 8, fontSize: 12,
-                                          padding: '3px 0', color: '#fafafa' }}>
+                                          padding: '3px 0', color: '#3a342c' }}>
                   <span>{label}</span>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <input type="number" step={st} min={mn} max={mx}
@@ -3783,15 +3781,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                            onChange={(e) => setFlyConfig((c) => ({ ...c, [key]: Number(e.target.value) }))}
                            style={{ width: 64, fontSize: 12, padding: '2px 4px',
                                     textAlign: 'right',
-                                    border: '1px solid #27272a', borderRadius: 2,
-                                    background: '#09090b', color: '#fafafa' }} />
-                    {sx && <span style={{ color: '#a1a1aa', fontSize: 11 }}>{sx}</span>}
+                                    border: '1px solid var(--line)', borderRadius: 3 }} />
+                    {sx && <span style={{ color: '#6f685c', fontSize: 11 }}>{sx}</span>}
                   </span>
                 </label>
               ))}
               <label style={{ display: 'flex', alignItems: 'center', gap: 7,
                               padding: '6px 0', cursor: 'pointer', fontSize: 12,
-                              color: '#fafafa' }}>
+                              color: '#3a342c' }}>
                 <input type="checkbox" checked={!!flyConfig.collapseAtMaxTilt}
                        onChange={(e) => setFlyConfig((c) => ({ ...c, collapseAtMaxTilt: e.target.checked }))} />
                 <span>Collapse layers at max tilt</span>
@@ -3799,8 +3796,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                 {flyPlaying ? (
                   <button onClick={() => { if (flyAbortRef.current) flyAbortRef.current(); flyAbortRef.current = null; }}
-                          style={{ flex: 1, padding: '8px 12px', border: '1px solid #ef4444',
-                                   background: '#ef4444', color: '#fafafa', borderRadius: 2,
+                          style={{ flex: 1, padding: '8px 12px', border: '1px solid #b03030',
+                                   background: '#b03030', color: '#fff', borderRadius: 4,
                                    cursor: 'pointer', fontWeight: 600 }}>
                     ■ Stop
                   </button>
@@ -3809,8 +3806,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                             if (flyAbortRef.current) flyAbortRef.current();
                             flyAbortRef.current = runFlyThrough(flyConfig);
                           }}
-                          style={{ flex: 1, padding: '8px 12px', border: '1px solid #27272a',
-                                   background: '#fafafa', color: '#09090b', borderRadius: 2,
+                          style={{ flex: 1, padding: '8px 12px', border: '1px solid #2f6f3e',
+                                   background: '#2f6f3e', color: '#fff', borderRadius: 4,
                                    cursor: 'pointer', fontWeight: 600 }}>
                     ▶ Play
                   </button>

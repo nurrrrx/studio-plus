@@ -1,0 +1,236 @@
+// Studio+ v2 — fresh layout modelled on shadcn's sidebar-12 + sidebar-03
+// patterns. A collapsible sidebar on the left (with grouped, accordion-
+// style nav items) and a main inset that has a sticky breadcrumb header
+// and a content grid of cards. Stub for now: rendering placeholders the
+// user can flesh out feature by feature.
+
+import { useEffect, useState } from 'react';
+import './v2.css';
+
+const SIDEBAR_W_OPEN = 256;
+const SIDEBAR_W_COLLAPSED = 56;
+
+export default function AppV2() {
+  const [open, setOpen] = useState(true);
+  // Active nav item — purely cosmetic for now.
+  const [active, setActive] = useState('overview');
+
+  return (
+    <div className="v2-root">
+      <AppSidebar open={open} setOpen={setOpen} active={active} setActive={setActive} />
+      <SidebarInset open={open}>
+        <header className="v2-header">
+          <button className="v2-icon-btn"
+                  title={open ? 'Collapse sidebar' : 'Expand sidebar'}
+                  onClick={() => setOpen((o) => !o)}>
+            <Icon name={open ? 'sidebar-left' : 'sidebar-right'} />
+          </button>
+          <span className="v2-sep" />
+          <Breadcrumb crumbs={[
+            { label: 'studio+', href: '#' },
+            { label: 'projects',  href: '#' },
+            { label: 'Al Zeina',  current: true },
+          ]} />
+          <div style={{ flex: 1 }} />
+          <a href="../" className="v2-link" title="Back to the canvas app">
+            ← classic view
+          </a>
+        </header>
+        <main className="v2-main">
+          <div className="v2-card-grid">
+            <CardPlaceholder title="Recent saved views" hint="Pulls from the orbit settings' savedViews array" />
+            <CardPlaceholder title="Layers" hint="Pavement · Bike lanes · Green corridors · Park · Burjeel" />
+            <CardPlaceholder title="Tour status" hint="Configure + play the camera tour from here" />
+          </div>
+          <div className="v2-big-pane">
+            <div className="v2-big-pane-text">
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>studio+ v2</h2>
+              <p style={{ margin: '6px 0 0', fontSize: 13, color: '#71717a', lineHeight: 1.5 }}>
+                This page is a fresh layout following the shadcn sidebar-12
+                / sidebar-03 patterns. The 3D canvas, layer controls and
+                camera-tour controls will be wired in here as panels next.
+                For now go back to the <a href="../" className="v2-link">classic view</a>
+                {' '}to interact with the project.
+              </p>
+            </div>
+          </div>
+        </main>
+      </SidebarInset>
+    </div>
+  );
+}
+
+// ---------- Sidebar ----------------------------------------------------------
+
+const NAV_GROUPS = [
+  {
+    label: 'Workspace',
+    items: [
+      { key: 'overview',   label: 'Overview',     icon: 'home'    },
+      { key: 'canvas',     label: '3D canvas',    icon: 'cube'    },
+      { key: 'views',      label: 'Saved views',  icon: 'star'    },
+    ],
+  },
+  {
+    label: 'Customization',
+    items: [
+      { key: 'layers',     label: 'Layers',       icon: 'layers'  },
+      { key: 'props',      label: 'Props library', icon: 'package' },
+      { key: 'colours',    label: 'Colours',      icon: 'palette' },
+    ],
+  },
+  {
+    label: 'Animation',
+    items: [
+      { key: 'tour',       label: 'Camera tour',  icon: 'play'    },
+    ],
+  },
+];
+
+function AppSidebar({ open, setOpen, active, setActive }) {
+  return (
+    <aside className={`v2-sidebar ${open ? 'is-open' : 'is-collapsed'}`}
+           style={{ width: open ? SIDEBAR_W_OPEN : SIDEBAR_W_COLLAPSED }}>
+      <div className="v2-sidebar-header">
+        <div className="v2-sidebar-logo" title="studio+">
+          <Icon name="logo" />
+        </div>
+        {open && (
+          <div className="v2-sidebar-title">
+            <div className="v2-sidebar-title-main">studio+</div>
+            <div className="v2-sidebar-title-sub">Al Zeina</div>
+          </div>
+        )}
+      </div>
+      <div className="v2-sidebar-content">
+        {NAV_GROUPS.map((g) => (
+          <SidebarGroup key={g.label} group={g} open={open}
+                        active={active} setActive={setActive} />
+        ))}
+      </div>
+      <div className="v2-sidebar-footer">
+        {open ? (
+          <div className="v2-sidebar-user">
+            <div className="v2-sidebar-avatar">K</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#27272a',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>kitty</div>
+              <div style={{ fontSize: 11, color: '#71717a' }}>signed in</div>
+            </div>
+          </div>
+        ) : (
+          <div className="v2-sidebar-avatar" title="kitty">K</div>
+        )}
+      </div>
+      {/* Rail handle to expand a collapsed sidebar */}
+      <button className="v2-sidebar-rail"
+              onClick={() => setOpen((o) => !o)}
+              title={open ? 'Collapse' : 'Expand'} />
+    </aside>
+  );
+}
+
+function SidebarGroup({ group, open, active, setActive }) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <div className="v2-sb-group">
+      {open && (
+        <button className="v2-sb-group-label"
+                onClick={() => setExpanded((e) => !e)}>
+          <span>{group.label}</span>
+          <Icon name="chevron" style={{
+            transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 120ms ease',
+          }} />
+        </button>
+      )}
+      {(expanded || !open) && (
+        <ul className="v2-sb-list">
+          {group.items.map((it) => (
+            <li key={it.key}>
+              <button className={`v2-sb-item ${active === it.key ? 'is-active' : ''}`}
+                      onClick={() => setActive(it.key)}
+                      title={open ? '' : it.label}>
+                <span className="v2-sb-icon"><Icon name={it.icon} /></span>
+                {open && <span className="v2-sb-label">{it.label}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------- Inset (main column) ---------------------------------------------
+
+function SidebarInset({ open, children }) {
+  return (
+    <div className="v2-inset"
+         style={{ marginLeft: open ? SIDEBAR_W_OPEN : SIDEBAR_W_COLLAPSED }}>
+      {children}
+    </div>
+  );
+}
+
+function Breadcrumb({ crumbs }) {
+  return (
+    <nav className="v2-breadcrumb" aria-label="breadcrumb">
+      {crumbs.map((c, i) => (
+        <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {c.current
+            ? <span className="v2-breadcrumb-current">{c.label}</span>
+            : <a className="v2-breadcrumb-link" href={c.href}>{c.label}</a>}
+          {i < crumbs.length - 1 && <span className="v2-breadcrumb-sep">/</span>}
+        </span>
+      ))}
+    </nav>
+  );
+}
+
+function CardPlaceholder({ title, hint }) {
+  return (
+    <div className="v2-card">
+      <div className="v2-card-title">{title}</div>
+      <div className="v2-card-hint">{hint}</div>
+    </div>
+  );
+}
+
+// ---------- Tiny inline icon set --------------------------------------------
+
+function Icon({ name, style }) {
+  const s = { width: 16, height: 16, ...style };
+  const stroke = 'currentColor', sw = 1.6;
+  const cap = 'round', join = 'round', fill = 'none';
+  const Box = ({ children }) => (
+    <svg viewBox="0 0 24 24" style={s} fill={fill} stroke={stroke}
+         strokeWidth={sw} strokeLinecap={cap} strokeLinejoin={join}>{children}</svg>
+  );
+  switch (name) {
+    case 'logo':
+      return <Box><polygon points="12,3 21,7.5 12,12 3,7.5" /><polyline points="3,7.5 3,16.5 12,21 21,16.5 21,7.5" /><polyline points="12,12 12,21" /></Box>;
+    case 'sidebar-left':
+      return <Box><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /></Box>;
+    case 'sidebar-right':
+      return <Box><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="15" y1="4" x2="15" y2="20" /></Box>;
+    case 'chevron':
+      return <Box><polyline points="9,5 15,12 9,19" /></Box>;
+    case 'home':
+      return <Box><path d="M3 11l9-7 9 7" /><path d="M5 10v10h14V10" /></Box>;
+    case 'cube':
+      return <Box><polygon points="12,3 21,7.5 12,12 3,7.5" /><polyline points="3,7.5 3,16.5 12,21 21,16.5 21,7.5" /><polyline points="12,12 12,21" /></Box>;
+    case 'star':
+      return <Box><polygon points="12,3 14.5,9 21,9.5 16,14 17.5,21 12,17.5 6.5,21 8,14 3,9.5 9.5,9" /></Box>;
+    case 'layers':
+      return <Box><polygon points="12,3 21,8 12,13 3,8" /><polyline points="3,12 12,17 21,12" /><polyline points="3,16 12,21 21,16" /></Box>;
+    case 'package':
+      return <Box><polyline points="3,8 12,3 21,8 21,16 12,21 3,16 3,8" /><polyline points="3,8 12,13 21,8" /><line x1="12" y1="13" x2="12" y2="21" /></Box>;
+    case 'palette':
+      return <Box><circle cx="12" cy="12" r="9" /><circle cx="8" cy="9" r="1.2" /><circle cx="12" cy="7" r="1.2" /><circle cx="16" cy="9" r="1.2" /><circle cx="17" cy="13" r="1.2" /><path d="M12 17a1.5 1.5 0 0 1 1.5-1.5h2A2.5 2.5 0 0 0 18 13" /></Box>;
+    case 'play':
+      return <Box><polygon points="6,3 21,12 6,21" /></Box>;
+    default:
+      return <Box><circle cx="12" cy="12" r="3" /></Box>;
+  }
+}

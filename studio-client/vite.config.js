@@ -42,7 +42,19 @@ function settingsApi() {
 
 // On GitHub Pages the site is served from /<repo>/, so set base via env at build time.
 // Locally `vite dev` and `vite preview` use the default '/'.
+// Multi-page input so the v2 layout gets a real /v2/ URL (the user wants
+// https://nurrrrx.github.io/studio-plus/v2/, not a hash route). Both pages
+// import the same main.jsx; that file inspects the path and renders App
+// (3D canvas) or AppV2 (shadcn sidebar layout) accordingly.
 export default defineConfig({
   base: process.env.VITE_BASE || '/',
   plugins: [react(), settingsApi()],
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(import.meta.dirname, 'index.html'),
+        v2:   path.resolve(import.meta.dirname, 'v2/index.html'),
+      },
+    },
+  },
 });

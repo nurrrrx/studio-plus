@@ -1,0 +1,175 @@
+/* studio+ v2 — shadcn-inspired layout (sidebar + inset). Light palette,
+   neutral zinc accents, sharp-ish corners. Self-contained; doesn't touch
+   the classic page's styles.css. */
+
+:root {
+  --v2-bg:        #ffffff;
+  --v2-fg:        #09090b;
+  --v2-muted:     #f4f4f5;
+  --v2-muted-fg:  #71717a;
+  --v2-border:    #e4e4e7;
+  --v2-accent:    #f4f4f5;
+  --v2-accent-fg: #18181b;
+  --v2-primary:   #18181b;
+  --v2-primary-fg:#fafafa;
+}
+
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  background: var(--v2-bg); color: var(--v2-fg);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+
+.v2-root {
+  display: flex; height: 100vh; width: 100vw;
+  background: var(--v2-bg);
+}
+
+/* ---- Sidebar ---- */
+.v2-sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  background: var(--v2-bg);
+  border-right: 1px solid var(--v2-border);
+  transition: width 180ms ease;
+  z-index: 10;
+}
+.v2-sidebar-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-bottom: 1px solid var(--v2-border);
+  min-height: 56px;
+}
+.v2-sidebar-logo {
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px; background: var(--v2-primary); color: var(--v2-primary-fg);
+}
+.v2-sidebar-title-main { font-size: 13px; font-weight: 600; color: var(--v2-fg); line-height: 1; }
+.v2-sidebar-title-sub  { font-size: 11px; color: var(--v2-muted-fg); margin-top: 2px; line-height: 1; }
+
+.v2-sidebar-content {
+  flex: 1; overflow-y: auto;
+  padding: 8px 8px 12px;
+  scrollbar-width: thin;
+}
+
+.v2-sb-group { padding: 6px 0; }
+.v2-sb-group-label {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%;
+  padding: 4px 8px;
+  border: none; background: transparent;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.3px;
+  color: var(--v2-muted-fg); text-transform: none;
+  cursor: pointer;
+}
+.v2-sb-group-label:hover { color: var(--v2-fg); }
+
+.v2-sb-list { list-style: none; padding: 0; margin: 4px 0 0; }
+.v2-sb-list li + li { margin-top: 2px; }
+.v2-sb-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none; background: transparent;
+  border-radius: 6px;
+  font-size: 13px; color: var(--v2-fg); text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.v2-sb-item:hover { background: var(--v2-accent); color: var(--v2-accent-fg); }
+.v2-sb-item.is-active { background: var(--v2-primary); color: var(--v2-primary-fg); }
+.v2-sb-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex-shrink: 0; }
+.v2-sb-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.v2-sidebar.is-collapsed .v2-sb-item { justify-content: center; padding: 8px 0; }
+.v2-sidebar.is-collapsed .v2-sb-group-label { display: none; }
+
+.v2-sidebar-footer {
+  border-top: 1px solid var(--v2-border);
+  padding: 10px 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.v2-sidebar-user { display: flex; align-items: center; gap: 10px; width: 100%; }
+.v2-sidebar-avatar {
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--v2-accent); color: var(--v2-accent-fg);
+  font-size: 12px; font-weight: 600;
+}
+
+/* Rail handle on the right edge of the sidebar — click to toggle */
+.v2-sidebar-rail {
+  position: absolute; top: 0; right: -3px; bottom: 0; width: 6px;
+  border: none; background: transparent; cursor: ew-resize; padding: 0;
+}
+.v2-sidebar-rail:hover { background: linear-gradient(90deg, transparent, rgba(0,0,0,0.06)); }
+
+/* ---- Main inset ---- */
+.v2-inset {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  transition: margin-left 180ms ease;
+}
+.v2-header {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 10px;
+  height: 56px; padding: 0 16px;
+  background: var(--v2-bg);
+  border-bottom: 1px solid var(--v2-border);
+}
+.v2-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--v2-fg); cursor: pointer;
+}
+.v2-icon-btn:hover { background: var(--v2-accent); }
+.v2-sep { width: 1px; height: 16px; background: var(--v2-border); }
+.v2-link {
+  color: var(--v2-fg); text-decoration: none; font-size: 13px;
+  padding: 6px 10px; border-radius: 6px;
+  border: 1px solid var(--v2-border); background: transparent;
+}
+.v2-link:hover { background: var(--v2-accent); }
+
+.v2-breadcrumb { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.v2-breadcrumb-link { color: var(--v2-muted-fg); text-decoration: none; }
+.v2-breadcrumb-link:hover { color: var(--v2-fg); }
+.v2-breadcrumb-current { color: var(--v2-fg); font-weight: 500; }
+.v2-breadcrumb-sep { color: var(--v2-muted-fg); font-size: 12px; }
+
+.v2-main {
+  flex: 1; min-height: 0;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 16px;
+  overflow-y: auto;
+  background: var(--v2-bg);
+}
+.v2-card-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.v2-card {
+  aspect-ratio: 16 / 9;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--v2-muted);
+  border: 1px solid var(--v2-border);
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.v2-card-title { font-size: 13px; font-weight: 600; color: var(--v2-fg); }
+.v2-card-hint  { font-size: 12px; color: var(--v2-muted-fg); line-height: 1.4; }
+
+.v2-big-pane {
+  flex: 1; min-height: 320px;
+  border-radius: 12px;
+  background: var(--v2-muted);
+  border: 1px solid var(--v2-border);
+  display: flex; align-items: flex-start; justify-content: flex-start;
+  padding: 16px;
+}
+.v2-big-pane-text { max-width: 560px; }
