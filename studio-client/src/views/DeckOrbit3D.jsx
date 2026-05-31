@@ -3964,12 +3964,25 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             {show('save') && (
               <>
                 <button onClick={saveCurrentView}
-                        title="bookmark the current camera position under a name"
-                        style={{ ...btn, padding: '5px 8px', fontSize: 11,
-                                 background: '#fff', color: '#3a342c' }}>
-                  Save view
+                        title="Save view — bookmark the current camera position under a name"
+                        style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
+                  {/* bookmark icon */}
+                  <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                    <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                          d="M6 3h12v18l-6-4-6 4z"/>
+                  </svg>
                 </button>
-                <SaveButton dirty={dirty} save={save} />
+                <button onClick={save} disabled={!dirty}
+                        title={dirty ? 'Save settings — persist changes to settings.json' : 'No changes to save'}
+                        style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
+                                 cursor: dirty ? 'pointer' : 'default',
+                                 opacity: dirty ? 1 : 0.45 }}>
+                  {/* floppy-disk icon */}
+                  <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                    <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                          d="M5 3h11l3 3v15H5zM8 3v5h8V3M8 21v-7h8v7"/>
+                  </svg>
+                </button>
               </>
             )}
           </div>
