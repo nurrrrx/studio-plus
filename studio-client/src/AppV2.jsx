@@ -82,9 +82,17 @@ function ProjectsListPage({ onSignOut }) {
           ]} />
           <div style={{ flex: 1 }} />
           {isAuthed() && (
-            <button onClick={onSignOut} className="v2-link" title="Sign out"
-                    style={{ cursor: 'pointer' }}>
-              Sign out
+            <button onClick={onSignOut} title="Sign out"
+                    style={{ width: 28, height: 28, padding: 0,
+                             border: '1px solid #27272a', borderRadius: 2,
+                             background: '#09090b', color: '#fafafa',
+                             display: 'inline-flex', alignItems: 'center',
+                             justifyContent: 'center', cursor: 'pointer' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden>
+                <path fill="none" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round"
+                      d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9" />
+              </svg>
             </button>
           )}
           <a href={`${BASE}/v1/`} className="v2-link" title="Switch to the classic canvas app">
@@ -196,9 +204,17 @@ function ProjectViewPage({ projectId, onSignOut }) {
           <div ref={setHeaderActionsTarget}
                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} />
           {isAuthed() && (
-            <button onClick={onSignOut} className="v2-link" title="Sign out"
-                    style={{ cursor: 'pointer' }}>
-              Sign out
+            <button onClick={onSignOut} title="Sign out"
+                    style={{ width: 28, height: 28, padding: 0,
+                             border: '1px solid #27272a', borderRadius: 2,
+                             background: '#09090b', color: '#fafafa',
+                             display: 'inline-flex', alignItems: 'center',
+                             justifyContent: 'center', cursor: 'pointer' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden>
+                <path fill="none" stroke="currentColor" strokeWidth="2"
+                      strokeLinecap="round" strokeLinejoin="round"
+                      d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9" />
+              </svg>
             </button>
           )}
           <button className="v2-icon-btn"
