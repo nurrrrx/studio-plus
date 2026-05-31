@@ -478,6 +478,47 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                     || placeMode === 'bikelane'
                     || (placeMode && PROP_META[placeMode]?.polygon);
   const activeView = isDrawing ? orthoView : view;
+  // OrbitView and OrthographicView use different zoom unit systems — the
+  // same viewState.zoom value yields wildly different visible scales in
+  // each view. On every transition between the two we (a) measure how
+  // wide the world currently appears at the cursor center, (b) compute
+  // the zoom in the new view's units that reproduces that same world
+  // width, and (c) apply it so the map stays visible at the same scale
+  // through the swap.
+  const wasDrawingRef = useRef(false);
+  const savedOrbitZoomRef = useRef(null);
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    if (!w || !h) return;
+    const measureHalfWorld = (v) => {
+      try {
+        const vp = v.makeViewport({ width: w, height: h, viewState });
+        const c = vp.unproject([w / 2, h / 2], { targetZ: surfaceZ });
+        const e = vp.unproject([w, h / 2], { targetZ: surfaceZ });
+        const hx = e[0] - c[0], hy = e[1] - c[1];
+        return { halfWorld: Math.hypot(hx, hy), centerXY: [c[0], c[1]] };
+      } catch { return null; }
+    };
+    if (isDrawing && !wasDrawingRef.current) {
+      // Entering drawing: measure current orbit extent, compute ortho zoom.
+      const m = measureHalfWorld(view);
+      if (m && m.halfWorld > 0) {
+        savedOrbitZoomRef.current = viewState.zoom;
+        const orthoZoom = Math.log2((w / 2) / m.halfWorld);
+        setViewState((vs) => ({ ...vs, zoom: orthoZoom, target: [m.centerXY[0], m.centerXY[1], vs.target?.[2] ?? 0] }));
+      }
+    } else if (!isDrawing && wasDrawingRef.current) {
+      // Exiting drawing: restore the saved orbit zoom. Target stays wherever
+      // the user panned to in ortho mode.
+      if (savedOrbitZoomRef.current != null) {
+        const z = savedOrbitZoomRef.current; savedOrbitZoomRef.current = null;
+        setViewState((vs) => ({ ...vs, zoom: z }));
+      }
+    }
+    wasDrawingRef.current = isDrawing;
+  }, [isDrawing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Box-select drag: while boxSelect is on, mousedown anywhere in the canvas
   // (other than on the box-select UI itself) starts a screen-space rectangle.
