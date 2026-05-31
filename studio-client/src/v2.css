@@ -202,6 +202,22 @@ body {
 }
 .v2-project-card:active { transform: scale(0.997); }
 
+/* Project-view main area: zero padding + flex column so the embedded
+   canvas fills every pixel between the sidebars. */
+.v2-main-canvas { padding: 0; overflow: hidden; }
+.v2-canvas-frame {
+  flex: 1; min-height: 0; min-width: 0;
+  position: relative;
+  border-top: 1px solid var(--v2-border);
+  background: #ffffff;
+}
+.v2-canvas-frame > .svgwrap,
+.v2-canvas-frame > div { width: 100%; height: 100%; }
+.v2-canvas-loading {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  color: var(--v2-muted-fg); font-size: 13px;
+}
+
 .v2-big-pane {
   flex: 1; min-height: 320px;
   border-radius: 12px;

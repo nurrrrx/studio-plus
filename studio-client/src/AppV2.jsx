@@ -7,6 +7,8 @@
 import { useEffect, useState } from 'react';
 import './v2.css';
 import { listProjects, backendConfigured } from './api.js';
+import { loadGeo } from './geo.js';
+import DeckOrbit3D from './views/DeckOrbit3D.jsx';
 
 const SIDEBAR_W_OPEN = 256;
 const SIDEBAR_W_COLLAPSED = 56;
@@ -101,6 +103,26 @@ function ProjectViewPage({ projectId }) {
   const [activeToc, setActiveToc] = useState('layers/bike-lanes');
   // Friendly project name for the breadcrumb (lazy fetch).
   const [projectName, setProjectName] = useState(projectId);
+  // Geometry + chrome for the embedded canvas. chrome controls which of
+  // DeckOrbit3D's built-in overlay widgets render; we leave them all
+  // visible so the page is fully functional with the canvas. Future
+  // iterations can hide overlays and reproduce them as sidebar-native
+  // components.
+  const [geo, setGeo] = useState(null);
+  const [chrome] = useState({ legend: false });
+  const [freeOrbit, setFreeOrbit] = useState(true);
+
+  // Tell the fetch interceptor in main.jsx which project to talk to.
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.__studioPlusProject = projectId;
+  }, [projectId]);
+
+  // Load the hand-traced Al Zeina geometry (same source as the classic
+  // App). loadGeo fetches the GeoJSONs under public/data/.
+  useEffect(() => {
+    loadGeo().then(setGeo).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!backendConfigured()) return;
     listProjects()
@@ -110,6 +132,7 @@ function ProjectViewPage({ projectId }) {
       })
       .catch(() => {});
   }, [projectId]);
+
   return (
     <div className="v2-root">
       <AppSidebar open={open} setOpen={setOpen} active={active} setActive={setActive} />
@@ -136,19 +159,16 @@ function ProjectViewPage({ projectId }) {
             <Icon name={rightOpen ? 'sidebar-right' : 'sidebar-left'} />
           </button>
         </header>
-        <main className="v2-main">
-          <div className="v2-big-pane">
-            <div className="v2-big-pane-text">
-              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>studio+ v2</h2>
-              <p style={{ margin: '6px 0 0', fontSize: 13, color: '#71717a', lineHeight: 1.5 }}>
-                This page is a fresh layout following the shadcn sidebar-12
-                / sidebar-03 patterns. The 3D canvas, layer controls and
-                camera-tour controls will be wired in here as panels next.
-                For now go back to the <a href="../../" className="v2-link">classic view</a>
-                {' '}to interact with the project.
-              </p>
+        <main className="v2-main v2-main-canvas">
+          {!geo ? (
+            <div className="v2-canvas-loading">Loading Al Zeina geometry…</div>
+          ) : (
+            <div className="v2-canvas-frame">
+              <DeckOrbit3D geo={geo} chrome={chrome}
+                           freeOrbit={freeOrbit}
+                           onFreeOrbitChange={setFreeOrbit} />
             </div>
-          </div>
+          )}
         </main>
       </SidebarInset>
       <RightSidebar open={rightOpen} active={activeToc} setActive={setActiveToc} />
