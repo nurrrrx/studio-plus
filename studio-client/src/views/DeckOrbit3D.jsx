@@ -3930,12 +3930,38 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         // sidebar exactly like it fills the canvas overlay.
         const sliderRowStyle = { display: 'flex', gap: 1, alignItems: 'stretch',
                                  flex: 1, minHeight: 0, width: 108 };
-        // Hand / Reset / Photo / Save-view / Save-settings cluster.
-        // Rendered inline at the bottom of the canvas-overlay stack, or
-        // portaled into the V2 header (next to Sign out) when set.
+        // Hand / Reset / Photo / Save-view / Save-settings / Play
+        // cluster. Rendered inline at the bottom of the canvas-overlay
+        // stack, or portaled into the V2 header (next to Sign out)
+        // when headerActionsTarget is set.
         const actionsCluster = (
           <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}
                onMouseDown={(e) => e.stopPropagation()}>
+            <button title={flyPlaying ? 'Stop camera tour' : 'Play camera tour'}
+                    onClick={() => {
+                      if (flyPlaying) {
+                        if (flyAbortRef.current) flyAbortRef.current();
+                        flyAbortRef.current = null;
+                      } else {
+                        if (flyAbortRef.current) flyAbortRef.current();
+                        flyAbortRef.current = runFlyThrough(flyConfig);
+                      }
+                    }}
+                    style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
+                             background: flyPlaying ? '#b03030' : '#09090b',
+                             borderColor: flyPlaying ? '#b03030' : '#27272a' }}>
+              {flyPlaying ? (
+                /* stop / square */
+                <svg width="12" height="12" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                  <rect x="5" y="5" width="14" height="14" fill="currentColor" />
+                </svg>
+              ) : (
+                /* play / triangle */
+                <svg width="12" height="12" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                  <polygon points="7,4 21,12 7,20" fill="currentColor" />
+                </svg>
+              )}
+            </button>
             <button title="hand tool — drag to pan instead of rotate"
                     onClick={() => setPanMode((p) => !p)}
                     style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
