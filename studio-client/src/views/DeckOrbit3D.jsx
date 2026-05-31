@@ -274,6 +274,11 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const [layerExplodeGap, setLayerExplodeGap] = useState(8); // metres between layers
   const [showLayerPolygons, setShowLayerPolygons] = useState(false); // translucent slab per layer
   const [showLayerNames, setShowLayerNames] = useState(true);        // floating name label per layer
+  // When on, the slabs + labels are pushed at the END of the deck.gl
+  // layers array so they paint OVER buildings from any camera angle.
+  // When off (default) they're drawn in their natural depth order, which
+  // means tall buildings between camera and slab can occlude the slab.
+  const [layersInFront, setLayersInFront] = useState(false);
   const [newLayerName, setNewLayerName] = useState('');
   const [rejectionMsg, setRejectionMsg] = useState(null); // brief on-canvas toast
   const rejectionTimerRef = useRef(null);
@@ -1200,7 +1205,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       showGrid, gridExtent, gridColor, gridWidth, bgColor, showGroundPlane,
       numbersThrough, bldgFill, bldgLine, podiumFill, roadFill, roofWidth, edgeWidth, explodeGap,
       showTrees, fillCutouts, propsItems, propSizes, propColors, propAvoidIntersect, smartPlace,
-      propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons, showLayerNames,
+      propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons, showLayerNames, layersInFront,
       photoIncludeUi,
       shape, size, basemapStyle,
       archBuildings, archRoads, archBasemap,
@@ -1245,6 +1250,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     if (typeof s.layerExplodeGap === 'number') setLayerExplodeGap(s.layerExplodeGap);
     if (typeof s.showLayerPolygons === 'boolean') setShowLayerPolygons(s.showLayerPolygons);
     if (typeof s.showLayerNames === 'boolean') setShowLayerNames(s.showLayerNames);
+    if (typeof s.layersInFront === 'boolean') setLayersInFront(s.layersInFront);
     if (typeof s.photoIncludeUi === 'boolean') setPhotoIncludeUi(s.photoIncludeUi);
     if (typeof s.propAvoidIntersect === 'boolean') setPropAvoidIntersect(s.propAvoidIntersect);
     if (s.smartPlace && typeof s.smartPlace === 'object') setSmartPlace(s.smartPlace);
@@ -1402,6 +1408,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // them. Drawing last (with depthTest off too) guarantees the label sits
   // in front of buildings, props, and overlays from the camera.
   let layerLabelData = null;
+  // Same trick for the slab itself when `layersInFront` is on — push the
+  // PolygonLayer at the end so buildings don't occlude it.
+  let layerSlabData = null;
   const bmVisible = bm && !interacting; // hide basemap while rotating
   if (bmVisible) {
     layers.push(new BitmapLayer({
@@ -1572,7 +1581,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const color = layer?.color ? hexRgb(layer.color) : PALETTE[idx % PALETTE.length];
       return { ...h, idx, z, color, polygon, centroid };
     });
-    layers.push(new PolygonLayer({
+    const slabLayer = new PolygonLayer({
       id: 'layer-slabs', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
       data: slabs,
       getPolygon: (d) => d.polygon.map(([x, y]) => [x, y, d.z]),
@@ -1580,9 +1589,15 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 130],
       getLineColor: (d) => [d.color[0], d.color[1], d.color[2], 240],
       lineWidthUnits: 'pixels', getLineWidth: 2.4,
-      parameters: { depthTest: false },
+      parameters: { depthTest: false, depthMask: false },
       updateTriggers: { getPolygon: [surfaceZ, layerExplodeGap, layersExploded] },
-    }));
+    });
+    if (layersInFront) {
+      // Defer to end of layers[] so buildings can't paint over.
+      layerSlabData = slabLayer;
+    } else {
+      layers.push(slabLayer);
+    }
     if (showLayerNames) layerLabelData = slabs;
   }
 
@@ -2137,6 +2152,11 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       }));
     }
   }
+
+  // When the "layers in front of buildings" toggle is on, push the slab
+  // here at the end so buildings (rendered earlier in the array) can't
+  // paint over it from oblique angles.
+  if (layerSlabData) layers.push(layerSlabData);
 
   // Layer-name labels — pushed LAST so they paint over buildings, props,
   // and every earlier layer regardless of camera angle. depthTest:false
@@ -3230,6 +3250,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               <input type="checkbox" checked={showLayerNames}
                      onChange={(e) => setShowLayerNames(e.target.checked)} />
               <span style={{ color: '#3a342c' }}>Show layer names</span>
+            </label>
+          )}
+          {layersExploded && propLayers.length > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0 2px 22px', cursor: 'pointer' }}
+                   title="When on, layer slabs and names paint over buildings from any camera angle">
+              <input type="checkbox" checked={layersInFront}
+                     onChange={(e) => setLayersInFront(e.target.checked)} />
+              <span style={{ color: '#3a342c' }}>Layers in front of buildings</span>
             </label>
           )}
           <div style={{ borderTop: '1px solid var(--line)', margin: '6px 0' }} />
