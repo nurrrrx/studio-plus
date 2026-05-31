@@ -307,12 +307,23 @@ function ChevDoubleHoriz({ dir = 'left', size = 13 }) {
 
 // Customization panel (collapsible to the left). `items` are checkboxes;
 // `children` adds extra controls below them.
-export function LayersPanel({ items = [], children, title = 'Customization' }) {
-  // Collapsed by default — the small chevron tab in the top-left expands.
-  const [collapsed, setCollapsed] = useState(true);
+export function LayersPanel({ items = [], children, title = 'Customization',
+                              open, onOpenChange, left = 16, hideCollapseTab = false }) {
+  // Controlled if `open` is provided; otherwise falls back to local state
+  // (collapsed by default). Lets a parent (e.g. the unified left sidebar)
+  // own the collapse state for the whole side rail.
+  const [localOpen, setLocalOpen] = useState(false);
+  const isControlled = typeof open === 'boolean';
+  const expanded = isControlled ? open : localOpen;
+  const setExpanded = (v) => { if (isControlled) onOpenChange?.(v); else setLocalOpen(v); };
+  const collapsed = !expanded;
+  const setCollapsed = (v) => setExpanded(!v);
   const headerTop = 'calc(var(--header-inset, 0px) + 16px)';
 
   if (collapsed) {
+    // When the parent rail manages its own toggle, suppress the legacy
+    // chevron tab so we don't get two collapse affordances.
+    if (hideCollapseTab) return null;
     return (
       <button onClick={() => setCollapsed(false)}
               title="show customization"
@@ -328,7 +339,7 @@ export function LayersPanel({ items = [], children, title = 'Customization' }) {
     );
   }
   return (
-    <div style={{ position: 'absolute', left: 16, top: headerTop, zIndex: 6, fontSize: 12,
+    <div style={{ position: 'absolute', left, top: headerTop, zIndex: 6, fontSize: 12,
                   maxHeight: 'calc(100% - var(--header-inset, 0px) - var(--footer-inset, 0px) - 32px)',
                   overflowY: 'auto',
                   background: '#09090b',
