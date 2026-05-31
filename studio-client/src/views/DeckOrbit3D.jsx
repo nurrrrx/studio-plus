@@ -818,7 +818,11 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
           const inst = p.instanceSize || {};
           const heightM = inst.h ?? o.h ?? meta.size ?? 4;
           const widthM  = inst.w ?? o.w ?? (heightM * (meta.w && meta.h ? meta.w / meta.h : 1));
-          const r = Math.min(10, Math.max(2, Math.max(widthM, heightM) * 0.55));
+          // Use the larger of (footprint, breathing-room) and scale up so
+          // neighbouring discs overlap into one solid block instead of a
+          // chain of circles. Capped so a giant prop doesn't make a huge
+          // disc on its own.
+          const r = Math.min(18, Math.max(4, Math.max(widthM, heightM) * 1.1));
           discs.push([p.position[0], p.position[1], r]);
           labelPts.push([p.position[0], p.position[1]]);
         } else if (Array.isArray(p.path) && p.path[0]) {
@@ -1591,10 +1595,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         getPosition: (d) => [d.x, d.y, d.z],
         getRadius: (d) => d.r,
         radiusUnits: 'meters',
-        filled: true, stroked: true,
-        getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 130],
-        getLineColor: (d) => [d.color[0], d.color[1], d.color[2], 230],
-        lineWidthUnits: 'pixels', getLineWidth: 1.4,
+        // No per-disc outline: clustered discs would otherwise look like a
+        // chain of circles. Anti-aliased fill edge gives the boundary.
+        filled: true, stroked: false,
+        getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 150],
         parameters: { depthTest: false },
         updateTriggers: { getPosition: [surfaceZ, layerExplodeGap, layersExploded] },
       }));
