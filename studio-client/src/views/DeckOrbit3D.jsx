@@ -2500,8 +2500,12 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const setPitch = (p) => setViewState((v) => ({ ...v, rotationX: clampX(p) }));
   const zoom = (f) => setViewState((v) => ({ ...v, zoom: Math.min(6, Math.max(-3, v.zoom + (f > 1 ? 0.3 : -0.3))) }));
 
+  // shadcn-dark icon button style: zinc-950 bg, zinc-800 border, zinc-50
+  // foreground, no rounding. Hover state via inline onMouseEnter isn't
+  // worth the wiring for this many buttons; the focus contrast is fine.
   const btn = { width: 22, height: 22, lineHeight: '20px', fontSize: 15, padding: 0, cursor: 'pointer',
-                border: '1px solid var(--line)', borderRadius: 4, background: 'rgba(255,255,255,0.92)', color: '#3a342c' };
+                border: '1px solid #27272a', borderRadius: 2,
+                background: '#09090b', color: '#fafafa' };
 
   return (
     <div className="svgwrap" ref={wrapRef}
@@ -3070,13 +3074,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                       maxHeight: 'calc(100% - var(--header-inset, 0px) - var(--footer-inset, 0px) - 32px)',
                       pointerEvents: 'none' }}>
           {propLayers.length > 0 && (
-            <div style={{ background: 'rgba(255,255,255,0.94)',
-                          border: '1px solid var(--line)', borderRadius: 6,
+            <div style={{ background: '#09090b',
+                          border: '1px solid #27272a', borderRadius: 2,
                           padding: '6px 8px', fontSize: 11,
-                          boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
-                          maxWidth: 240, overflowY: 'auto', pointerEvents: 'auto' }}
+                          boxShadow: '0 1px 5px rgba(0,0,0,0.45)',
+                          maxWidth: 240, overflowY: 'auto', pointerEvents: 'auto',
+                          color: '#fafafa' }}
                  onMouseDown={(e) => e.stopPropagation()}>
-              <div style={{ color: '#5e564a', fontWeight: 600, marginBottom: 4,
+              <div style={{ color: '#a1a1aa', fontWeight: 600, marginBottom: 4,
                             fontSize: 10, letterSpacing: 0.6 }}>LAYERS</div>
               {propLayers.map((l, i) => {
                 const defaultColor = ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8];
@@ -3088,7 +3093,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                          x.id === l.id ? { ...x, visible: !visible } : x))}
                        style={{ display: 'flex', alignItems: 'center', gap: 6,
                                 padding: '3px 0', cursor: 'pointer',
-                                opacity: visible ? 1 : 0.45, color: '#3a342c',
+                                opacity: visible ? 1 : 0.45, color: '#fafafa',
                                 userSelect: 'none' }}
                        title={visible ? `Hide ${l.name}` : `Show ${l.name}`}>
                     <span style={{ width: 12, height: 12, borderRadius: 2,
@@ -3106,18 +3111,19 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             </div>
           )}
           {savedViews.length > 0 && (
-            <div style={{ background: 'rgba(255,255,255,0.94)',
-                          border: '1px solid var(--line)', borderRadius: 6,
+            <div style={{ background: '#09090b',
+                          border: '1px solid #27272a', borderRadius: 2,
                           padding: '6px 8px', fontSize: 11,
-                          boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
-                          maxWidth: 240, overflowY: 'auto', pointerEvents: 'auto' }}
+                          boxShadow: '0 1px 5px rgba(0,0,0,0.45)',
+                          maxWidth: 240, overflowY: 'auto', pointerEvents: 'auto',
+                          color: '#fafafa' }}
                  onMouseDown={(e) => e.stopPropagation()}>
-              <div style={{ color: '#5e564a', fontWeight: 600, marginBottom: 4,
+              <div style={{ color: '#a1a1aa', fontWeight: 600, marginBottom: 4,
                             fontSize: 10, letterSpacing: 0.6 }}>VIEWS</div>
               {savedViews.map((view) => (
                 <div key={view.id}
                      style={{ display: 'flex', alignItems: 'center', gap: 4,
-                              padding: '3px 0', color: '#3a342c', userSelect: 'none' }}>
+                              padding: '3px 0', color: '#fafafa', userSelect: 'none' }}>
                   <span onClick={() => applyView(view)}
                         title={`Apply ${view.name}`}
                         style={{ flex: 1, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -3126,11 +3132,11 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                   </span>
                   <button onClick={() => renameView(view.id)} title="rename"
                           style={{ border: 'none', background: 'transparent',
-                                   cursor: 'pointer', color: '#6f685c', padding: 0,
+                                   cursor: 'pointer', color: '#a1a1aa', padding: 0,
                                    fontSize: 12, lineHeight: 1 }}>✎</button>
                   <button onClick={() => deleteView(view.id)} title="delete"
                           style={{ border: 'none', background: 'transparent',
-                                   cursor: 'pointer', color: '#b03030', padding: 0,
+                                   cursor: 'pointer', color: '#ef4444', padding: 0,
                                    fontSize: 13, lineHeight: 1 }}>×</button>
                 </div>
               ))}
@@ -4012,19 +4018,19 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
   };
   const ratio = Math.max(0, Math.min(1, (v - min) / (max - min)));
   const inc = (sign) => onChange(clamp(v + sign * step));
+  // shadcn-dark + / − button: black bg, zinc-800 border, zinc-50 text.
   const btnStyle = {
     width: 22, height: 18, lineHeight: '16px',
     padding: 0, fontSize: 13, fontWeight: 700,
-    border: '1px solid var(--line)', borderRadius: 3,
-    background: '#fff', color: '#3a342c', cursor: 'pointer',
+    border: '1px solid #27272a', borderRadius: 2,
+    background: '#09090b', color: '#fafafa', cursor: 'pointer',
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                   flex: 1, height: '100%', minWidth: 0,
                   userSelect: 'none', WebkitUserSelect: 'none' }}>
-      <div style={{ fontSize: 9, color: '#5e564a', letterSpacing: 1.3,
-                    textTransform: 'uppercase', fontWeight: 600,
-                    textShadow: '0 0 4px rgba(255,255,255,0.9)' }}>{label}</div>
+      <div style={{ fontSize: 9, color: '#a1a1aa', letterSpacing: 1.3,
+                    textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
       <HoldButton onStep={() => inc(+1)} title={`${label} +`} style={btnStyle}>+</HoldButton>
       {/* EQ-style stack of glowing segments. The whole track is a single
           drag target (cursor Y absolutely maps to value, same as before);
@@ -4032,9 +4038,8 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
           level. The indicator line glows at the current value. */}
       <div ref={trackRef} onMouseDown={startDrag} onTouchStart={startDrag}
            style={{ position: 'relative', width: 22, flex: 1, minHeight: 70,
-                    border: '1px solid #1c1726', borderRadius: 7,
-                    background: '#0c0a14',
-                    boxShadow: 'inset 0 0 8px rgba(0,0,0,0.55), 0 0 4px rgba(0,0,0,0.25)',
+                    border: '1px solid #27272a', borderRadius: 2,
+                    background: '#09090b',
                     cursor: 'ns-resize',
                     touchAction: 'none',
                     padding: '3px 3px',
@@ -4042,31 +4047,25 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
                     gap: 2 }}>
         {Array.from({ length: 22 }, (_, i) => {
           // Segment threshold from min (i=0) to max (i=21). Below or equal
-          // to v -> 'on' (glowing), above -> 'off' (dim).
+          // to v -> 'on' (zinc-50 white), above -> 'off' (zinc-800 dim).
           const threshold = min + ((i + 1) / 22) * (max - min);
           const on = v + 1e-9 >= threshold;
-          const dim = `${color}25`; // ~15% alpha hex shorthand-ish (browsers parse)
           return (
             <div key={i}
                  onClick={(e) => {
                    e.stopPropagation();
-                   // Click a tick -> jump value to that segment's level.
                    onChange(clamp(min + ((i + 1) / 22) * (max - min)));
                  }}
                  style={{ flex: 1, minHeight: 3,
-                          borderRadius: 2,
-                          background: on ? color : dim,
-                          opacity: on ? 0.95 : 0.55,
-                          boxShadow: on ? `0 0 6px ${color}, 0 0 2px ${color}` : 'none',
-                          transition: 'background 70ms ease, box-shadow 70ms ease, opacity 70ms ease' }} />
+                          borderRadius: 0,
+                          background: on ? '#fafafa' : '#27272a',
+                          transition: 'background 70ms ease' }} />
           );
         })}
-        {/* Glowing indicator line at the current value. Sits above the
-            segments so dragging it visually tracks the cursor. */}
+        {/* Thin white indicator line at the current value. */}
         <div style={{ position: 'absolute', left: -2, right: -2,
                       top: `${(1 - ratio) * 100}%`, transform: 'translateY(-50%)',
-                      height: 2, background: '#fff', borderRadius: 2,
-                      boxShadow: `0 0 8px ${color}, 0 0 2px #fff`,
+                      height: 2, background: '#fafafa',
                       pointerEvents: 'none' }} />
       </div>
       <HoldButton onStep={() => inc(-1)} title={`${label} −`} style={btnStyle}>−</HoldButton>
@@ -4078,7 +4077,8 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
              }}
              onWheel={(e) => e.currentTarget.blur()}
              style={{ width: 32, fontSize: 10, padding: '1px 1px', textAlign: 'center',
-                      border: '1px solid #c8c2b3', borderRadius: 3 }} />
+                      border: '1px solid #27272a', borderRadius: 2,
+                      background: '#09090b', color: '#fafafa' }} />
     </div>
   );
 }
@@ -4094,35 +4094,34 @@ function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, on
       <button onClick={() => setOpen(true)} title="camera tour"
               onMouseDown={(e) => e.stopPropagation()}
               style={{ position: 'absolute', left: 0,
-                       // Sits BELOW the Customization collapse tab so the
-                       // two left-edge tabs don't overlap.
                        top: 'calc(var(--header-inset, 0px) + 60px)',
-                       zIndex: 7, background: 'rgba(255,255,255,0.94)',
-                       border: '1px solid var(--line)', borderLeft: 'none',
-                       borderRadius: '0 6px 6px 0', padding: '8px 7px',
-                       cursor: 'pointer', color: '#3a342c',
-                       boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
+                       zIndex: 7, background: '#09090b',
+                       border: '1px solid #27272a', borderLeft: 'none',
+                       borderRadius: 0, padding: '8px 7px',
+                       cursor: 'pointer', color: '#fafafa',
+                       boxShadow: '0 1px 5px rgba(0,0,0,0.45)',
                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                        fontSize: 14, lineHeight: 1, userSelect: 'none' }}>
         <span style={{ fontWeight: 700 }}>▶</span>
         <span style={{ writingMode: 'vertical-rl', textOrientation: 'mixed',
                        fontSize: 9, letterSpacing: 1.4, textTransform: 'uppercase',
-                       color: '#5e564a', fontWeight: 600 }}>Tour</span>
+                       color: '#a1a1aa', fontWeight: 600 }}>Tour</span>
       </button>
     );
   }
   const numRow = (label, key, min, max, step, suffix) => (
     <label style={{ display: 'flex', justifyContent: 'space-between',
                     alignItems: 'center', gap: 8, fontSize: 12,
-                    padding: '3px 0', color: '#3a342c' }}>
+                    padding: '3px 0', color: '#fafafa' }}>
       <span>{label}</span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <input type="number" step={step} min={min} max={max}
                value={config[key] ?? ''}
                onChange={(e) => upd({ [key]: Number(e.target.value) })}
                style={{ width: 64, fontSize: 12, padding: '2px 4px', textAlign: 'right',
-                        border: '1px solid var(--line)', borderRadius: 3 }} />
-        {suffix && <span style={{ color: '#6f685c', fontSize: 11 }}>{suffix}</span>}
+                        border: '1px solid #27272a', borderRadius: 2,
+                        background: '#09090b', color: '#fafafa' }} />
+        {suffix && <span style={{ color: '#a1a1aa', fontSize: 11 }}>{suffix}</span>}
       </span>
     </label>
   );
@@ -4131,24 +4130,24 @@ function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, on
                   top: 'calc(var(--header-inset, 0px) + 16px)',
                   bottom: 'calc(var(--footer-inset, 0px) + 12px)',
                   zIndex: 7,
-                  background: 'rgba(255,255,255,0.96)',
-                  border: '1px solid var(--line)', borderLeft: 'none',
-                  borderRadius: '0 6px 6px 0',
+                  background: '#09090b',
+                  border: '1px solid #27272a', borderLeft: 'none',
+                  borderRadius: 0,
                   padding: '0 12px 10px 12px',
-                  boxShadow: '2px 0 10px rgba(0,0,0,0.12)',
-                  width: 248, fontSize: 12, color: '#3a342c',
+                  boxShadow: '2px 0 14px rgba(0,0,0,0.5)',
+                  width: 248, fontSize: 12, color: '#fafafa',
                   overflowY: 'auto',
                   animation: 'flyslide 180ms ease-out' }}
          onMouseDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
       <div style={{ position: 'sticky', top: 0, zIndex: 2,
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     margin: '0 -12px 10px -12px', padding: '8px 12px',
-                    background: 'rgba(58, 62, 70, 0.97)', color: '#f1f5f9',
-                    borderBottom: '1px solid #1f2937' }}>
+                    background: '#18181b', color: '#fafafa',
+                    borderBottom: '1px solid #27272a' }}>
         <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: 0.3 }}>Camera tour</div>
         <button onClick={() => setOpen(false)} title="hide"
                 style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-                         color: '#cbd5e1', padding: 0, fontSize: 18, lineHeight: 1 }}>‹</button>
+                         color: '#a1a1aa', padding: 0, fontSize: 18, lineHeight: 1 }}>‹</button>
       </div>
       {numRow('Min tilt',         'minTilt',       0, 89,  1, '°')}
       {numRow('Optimal tilt',     'optTilt',       0, 89,  1, '°')}
@@ -4159,7 +4158,8 @@ function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, on
       {numRow('Collapsed zoom',   'collapsedZoom',-3,  6, 0.1, '')}
       {numRow('Wait at each pose','waitSec',       0, 30, 0.5, 's')}
       <label style={{ display: 'flex', alignItems: 'center', gap: 7,
-                      padding: '6px 0', cursor: 'pointer', fontSize: 12 }}>
+                      padding: '6px 0', cursor: 'pointer', fontSize: 12,
+                      color: '#fafafa' }}>
         <input type="checkbox" checked={!!config.collapseAtMaxTilt}
                onChange={(e) => upd({ collapseAtMaxTilt: e.target.checked })} />
         <span>Collapse layers at max tilt</span>
@@ -4167,15 +4167,15 @@ function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, on
       <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
         {playing ? (
           <button onClick={onStop}
-                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #b03030',
-                           background: '#b03030', color: '#fff', borderRadius: 4,
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #ef4444',
+                           background: '#ef4444', color: '#fafafa', borderRadius: 2,
                            cursor: 'pointer', fontWeight: 600 }}>
             ■ Stop
           </button>
         ) : (
           <button onClick={onPlay}
-                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #2f6f3e',
-                           background: '#2f6f3e', color: '#fff', borderRadius: 4,
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #27272a',
+                           background: '#fafafa', color: '#09090b', borderRadius: 2,
                            cursor: 'pointer', fontWeight: 600 }}>
             ▶ Play
           </button>
