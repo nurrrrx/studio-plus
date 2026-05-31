@@ -3117,8 +3117,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 
       {/* Bottom-left overlay: LAYERS collapsible (checkboxes) and VIEWS
           collapsible (radio group), side by side, same minimal style.
-          Triggers sit at the bottom; content expands UPWARD. No card. */}
-      {(propLayers.length > 0 || savedViews.length > 0) && (
+          Triggers sit at the bottom; content expands UPWARD. No card.
+          VIEWS always shows because it has built-in 2D / 3D Collapsed
+          entries on top of any saved camera bookmarks. */}
+      {true && (
         <div style={{ position: 'absolute',
                       left: 16,
                       bottom: 'calc(var(--footer-inset, 0px) + 12px)',
@@ -3180,14 +3182,36 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               </button>
             </div>
           )}
-          {savedViews.length > 0 && (
+          {(() => {
+            // Built-in preset views, always at the top of the list. Each
+            // applies its own camera + flips layersExploded as needed.
+            // Saved camera bookmarks follow, prefixed with "3D " in the UI.
+            const builtIns = [
+              { id: '__builtin_2d', name: '2D',
+                onSelect: () => {
+                  setLayersExploded(false);
+                  setViewState((v) => ({ ...v, rotationOrbit: 0, rotationX: 0,
+                                         target: [0, 0, targetZ], zoom: homeView.zoom }));
+                } },
+              { id: '__builtin_3d_collapsed', name: '3D Collapsed',
+                onSelect: () => {
+                  setLayersExploded(false);
+                  setViewState({ ...homeView });
+                } },
+            ];
+            const savedDisplay = savedViews.map((v) => ({
+              id: v.id, name: `3D ${v.name}`,
+              onSelect: () => applyView(v),
+            }));
+            const items = [...builtIns, ...savedDisplay];
+            return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6,
                           alignItems: 'flex-start' }}>
               {viewsComboOpen && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4,
                               pointerEvents: 'auto' }}
                      onMouseDown={(e) => e.stopPropagation()}>
-                  {savedViews.map((view) => {
+                  {items.map((view) => {
                     const checked = selectedViewId === view.id;
                     return (
                       <label key={view.id}
@@ -3198,7 +3222,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                              title={`Apply ${view.name}`}>
                         <input type="radio" name="saved-views"
                                checked={checked}
-                               onChange={() => { setSelectedViewId(view.id); applyView(view); }}
+                               onChange={() => { setSelectedViewId(view.id); view.onSelect(); }}
                                style={{ margin: 0, cursor: 'pointer' }} />
                         <span style={{ whiteSpace: 'nowrap' }}>
                           {view.name}
@@ -3226,7 +3250,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 </svg>
               </button>
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
