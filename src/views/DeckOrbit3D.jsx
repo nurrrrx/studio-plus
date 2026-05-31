@@ -282,6 +282,61 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     return () => el.removeEventListener('wheel', onWheel, { capture: true });
   }, []);
 
+  // iPad / touch — two-finger PARALLEL drag (both fingers moving the same
+  // direction, distance & angle between them roughly stable) tilts the camera.
+  // deck.gl's OrbitController handles pinch-zoom and twist-rotate via touch
+  // events; this listener fills the missing "two-finger drag = pitch" gesture
+  // by detecting parallel motion and updating rotationX directly.
+  useEffect(() => {
+    const el = wrapRef.current; if (!el) return;
+    let start = null; // { t1, t2, dist, angle, cy, pitch }
+    const PITCH_SENS = 0.35; // degrees per pixel of vertical centre delta
+    const PINCH_TOL = 22;    // px change in finger distance that aborts as "pinch"
+    const TWIST_TOL = 0.18;  // rad change in finger angle that aborts as "twist"
+    const onStart = (e) => {
+      if (e.touches.length !== 2) { start = null; return; }
+      const t1 = e.touches[0], t2 = e.touches[1];
+      const dx = t2.clientX - t1.clientX, dy = t2.clientY - t1.clientY;
+      start = {
+        t1: { x: t1.clientX, y: t1.clientY },
+        t2: { x: t2.clientX, y: t2.clientY },
+        dist: Math.hypot(dx, dy),
+        angle: Math.atan2(dy, dx),
+        cy: (t1.clientY + t2.clientY) / 2,
+        pitch: viewRef.current?.rotationX ?? 55,
+      };
+    };
+    const onMove = (e) => {
+      if (!start || e.touches.length !== 2) return;
+      const t1 = e.touches[0], t2 = e.touches[1];
+      const dx = t2.clientX - t1.clientX, dy = t2.clientY - t1.clientY;
+      const dist = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy, dx);
+      const cy = (t1.clientY + t2.clientY) / 2;
+      const distDelta = Math.abs(dist - start.dist);
+      const angleDelta = Math.abs(angle - start.angle);
+      const cyDelta = cy - start.cy;
+      // Reject as pinch / twist gestures — those are handled by deck.gl.
+      if (distDelta > PINCH_TOL || angleDelta > TWIST_TOL) return;
+      if (Math.abs(cyDelta) < 4) return;
+      e.preventDefault();
+      // Dragging fingers DOWN tilts the camera toward horizon (higher pitch).
+      const next = Math.max(0, Math.min(89, start.pitch + cyDelta * PITCH_SENS));
+      setViewState((v) => ({ ...v, rotationX: next }));
+    };
+    const onEnd = (e) => { if (e.touches.length < 2) start = null; };
+    el.addEventListener('touchstart', onStart, { passive: false });
+    el.addEventListener('touchmove',  onMove,  { passive: false });
+    el.addEventListener('touchend',   onEnd);
+    el.addEventListener('touchcancel', onEnd);
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove',  onMove);
+      el.removeEventListener('touchend',   onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+  }, []);
+
   // Safari pinch (gesture events): zoom toward cursor + rotate around vertical
   // axis on twist. Chrome doesn't fire these — pinches arrive as ctrlKey wheels
   // (handled above). One-finger drag still rotates freely via deck.gl.
@@ -1660,7 +1715,15 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                   : fillMode === 'drawing' ? 'crosshair'
                   : panMode ? 'grab' : 'default' }}>
       <DeckGL ref={deckRef} views={view}
-              controller={{ scrollZoom: false, dragRotate: !panMode, dragPan: true }}
+              controller={{
+                scrollZoom: false,
+                dragRotate: !panMode,
+                dragPan: true,
+                // iPad / touch: two-finger pinch zooms, two-finger twist rotates.
+                // touchRotate is off in deck.gl's defaults; we explicitly enable it.
+                touchRotate: true,
+                touchZoom: true,
+              }}
               effects={[flatLighting]}
               viewState={viewState}
               onViewStateChange={({ viewState: vs }) => setViewState({ ...vs, rotationX: clampX(vs.rotationX) })}
