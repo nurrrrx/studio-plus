@@ -2446,6 +2446,26 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     }
   }
 
+  // Re-sequence the customization-layer prop blocks so list order
+  // dominates the type-based pipeline. Pavement (tiles) paints first,
+  // then bike lanes, then tree billboards, then Burjeel waves on top.
+  // Each helper splices the named layer out and re-inserts it just
+  // after the anchor id (no-op when either side is missing).
+  const moveAfter = (movedId, anchorId) => {
+    const movedIdx = layers.findIndex((l) => l && l.id === movedId);
+    if (movedIdx < 0) return;
+    const [moved] = layers.splice(movedIdx, 1);
+    const anchorIdx = layers.findIndex((l) => l && l.id === anchorId);
+    const insertAt = anchorIdx < 0 ? layers.length : anchorIdx + 1;
+    layers.splice(insertAt, 0, moved);
+  };
+  moveAfter('bikelanes',           'props-flat');
+  moveAfter('bikelane-markers',    'bikelanes');
+  moveAfter('props-billboard',     'bikelane-markers');
+  moveAfter('trees',               'props-billboard');
+  moveAfter('burjeel-wind-waves',  'trees');
+  moveAfter('burjeel-wind-inflow', 'burjeel-wind-waves');
+
   // When the "layers in front of buildings" toggle is on, push the slab
   // here at the end so buildings (rendered earlier in the array) can't
   // paint over it from oblique angles.
