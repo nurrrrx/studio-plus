@@ -3991,14 +3991,15 @@ function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runF
                                   alignItems: 'center', gap: 8, fontSize: 12,
                                   padding: '3px 0', color: '#3a342c' }}>
           <span>{label}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             <input type="number" step={st} min={mn} max={mx}
                    value={flyConfig[key] ?? ''}
                    onChange={(e) => setFlyConfig((c) => ({ ...c, [key]: Number(e.target.value) }))}
-                   style={{ width: 64, fontSize: 12, padding: '2px 4px',
+                   style={{ width: 64, boxSizing: 'border-box', fontSize: 12, padding: '2px 4px',
                             textAlign: 'right',
                             border: '1px solid var(--line)', borderRadius: 3 }} />
-            {sx && <span style={{ color: '#6f685c', fontSize: 11 }}>{sx}</span>}
+            <span style={{ width: 22, color: '#6f685c', fontSize: 11,
+                           textAlign: 'left', flexShrink: 0 }}>{sx || ''}</span>
           </span>
         </label>
       ))}

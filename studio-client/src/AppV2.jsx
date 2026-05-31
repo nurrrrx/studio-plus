@@ -193,9 +193,6 @@ function ProjectViewPage({ projectId, onSignOut }) {
               Sign out
             </button>
           )}
-          <a href={`${BASE}/v1/`} className="v2-link" title="Switch to the classic canvas app">
-            classic view →
-          </a>
           <button className="v2-icon-btn"
                   title={rightOpen ? 'Hide details panel' : 'Show details panel'}
                   onClick={() => setRightOpen((o) => !o)}>
