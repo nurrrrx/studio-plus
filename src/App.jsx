@@ -52,14 +52,22 @@ export default function App() {
   const [gearOpen, setGearOpen] = useState(false);
   const [freeOrbit3D, setFreeOrbit3D] = useState(true);
 
-  // Blueprint splash: visible for >=3s on every reload, then fades to home.
+  // Blueprint splash: stays until the user signs in or clicks "Continue as
+  // guest". onDone fades the splash and we unmount it after the CSS fade.
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [loaderMounted, setLoaderMounted] = useState(true);
+  const dismissLoader = () => {
+    setLoaderVisible(false);
+    setTimeout(() => setLoaderMounted(false), 700);
+  };
+
+  // Currently opened project ID. The fetch interceptor in main.jsx reads
+  // window.__studioPlusProject to scope /api/settings calls to this project,
+  // so we keep the global in sync.
+  const [projectId, setProjectId] = useState('alzeina');
   useEffect(() => {
-    const t1 = setTimeout(() => setLoaderVisible(false), 3000);
-    const t2 = setTimeout(() => setLoaderMounted(false), 3700); // remove from DOM after fade
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+    if (typeof window !== 'undefined') window.__studioPlusProject = projectId;
+  }, [projectId]);
 
   // Editable project title + header auto-hide / pin (persisted in settings.json `app`).
   const [title, setTitle] = useState(DEFAULT_TITLE);
@@ -149,7 +157,7 @@ export default function App() {
         '--header-inset': headerVisible ? '32px' : '0px',
         '--footer-inset': footerVisible ? '22px' : '0px',
       }}>
-      {loaderMounted && <Loader visible={loaderVisible} />}
+      {loaderMounted && <Loader visible={loaderVisible} onDone={dismissLoader} />}
       <div className={`bar ${headerVisible ? '' : 'hidden'}`}>
         <div className="bar-left">
           <button className="tab icon-btn"
@@ -270,7 +278,8 @@ export default function App() {
       <div className="stage">
         {page === 'projects' ? (
           <Projects activeTitle={title}
-                    onOpen={() => setPage('project')}
+                    activeId={projectId}
+                    onOpen={(p) => { if (p?.id) setProjectId(p.id); setPage('project'); }}
                     onRename={(n) => setTitle(n)} />
         ) : !geo ? (
           <div className="loading">Loading Al Zeina geometry…</div>

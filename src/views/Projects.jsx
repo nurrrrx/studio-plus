@@ -2,6 +2,7 @@
 // accent lines) and a radial vignette. Project cubes are isometric SVGs
 // arranged in a centred row, sized so they visually rest on the grid texture.
 import { useEffect, useState } from 'react';
+import { listProjects, createProject, isAuthed, backendConfigured } from '../api.js';
 
 const DEFAULT_PROJECT = {
   id: 'alzeina',
@@ -9,20 +10,40 @@ const DEFAULT_PROJECT = {
   location: 'Al Raha Beach, Abu Dhabi',
 };
 
-export default function Projects({ activeTitle, onOpen, onRename }) {
+// Stable slug for an arbitrary project name.
+const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || `p-${Date.now()}`;
+
+export default function Projects({ activeTitle, activeId, onOpen, onRename }) {
   const [projects, setProjects] = useState([{ ...DEFAULT_PROJECT, name: activeTitle || DEFAULT_PROJECT.name }]);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
 
+  // Hydrate from the backend if it's reachable. On failure (no backend in
+  // dev, or network) the default project remains visible.
   useEffect(() => {
-    setProjects((ps) => ps.map((p) => p.id === 'alzeina' ? { ...p, name: activeTitle || p.name } : p));
-  }, [activeTitle]);
+    if (!backendConfigured()) return;
+    listProjects().then((list) => {
+      if (!list || list.length === 0) return;
+      setProjects(list.map((p) => ({ id: p.id, name: p.name, location: p.location || '—' })));
+    }).catch(() => {});
+  }, []);
 
-  const commitAdd = () => {
+  // Keep the active card's name in sync with the live header title.
+  useEffect(() => {
+    setProjects((ps) => ps.map((p) => p.id === (activeId || 'alzeina') ? { ...p, name: activeTitle || p.name } : p));
+  }, [activeTitle, activeId]);
+
+  const commitAdd = async () => {
     const n = newName.trim();
     if (!n) { setAdding(false); return; }
-    setProjects((ps) => [...ps, { id: `p-${Date.now()}`, name: n, location: '—' }]);
+    const id = slugify(n);
+    // Optimistic add; the backend mirror happens in the background if authed.
+    setProjects((ps) => ps.find((p) => p.id === id) ? ps : [...ps, { id, name: n, location: '—' }]);
     setAdding(false); setNewName('');
+    if (backendConfigured() && isAuthed()) {
+      try { await createProject(id, n, ''); }
+      catch (e) { /* 409 (already exists) is fine; surface other errors silently */ }
+    }
   };
 
   return (
@@ -36,10 +57,13 @@ export default function Projects({ activeTitle, onOpen, onRename }) {
                     sub={p.location}
                     paletteIndex={i}
                     onClick={() => onOpen?.(p)}
-                    onDoubleClick={p.id === 'alzeina' ? () => {
+                    onDoubleClick={() => {
                       const next = prompt('Rename project', p.name);
-                      if (next && next.trim()) onRename?.(next.trim());
-                    } : undefined} />
+                      if (next && next.trim()) {
+                        setProjects((ps) => ps.map((x) => x.id === p.id ? { ...x, name: next.trim() } : x));
+                        if (p.id === (activeId || 'alzeina')) onRename?.(next.trim());
+                      }
+                    }} />
         ))}
         {adding ? (
           <NewCubeInput value={newName} onChange={setNewName}

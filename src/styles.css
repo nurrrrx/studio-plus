@@ -143,6 +143,38 @@ body { font-family: var(--sans); color: var(--ink); background: var(--paper); }
   to { transform: translateX(380%); }
 }
 
+/* Login form on the splash. Minimal, mirrors the blueprint palette. */
+.loader-login { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; align-items: center; }
+.loader-login-input {
+  width: 220px; padding: 8px 10px;
+  background: rgba(15, 25, 45, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 4px;
+  color: #e2e8f0; font-family: var(--sans, system-ui); font-size: 13px;
+  outline: none;
+}
+.loader-login-input::placeholder { color: rgba(148, 163, 184, 0.55); }
+.loader-login-input:focus { border-color: #7ab8ff; }
+.loader-login-err {
+  color: #f8a3a3; font-size: 11px; letter-spacing: 0.2px;
+}
+.loader-login-hint {
+  color: rgba(148, 163, 184, 0.7); font-size: 11px; margin-top: 2px;
+}
+.loader-login-row { display: flex; gap: 10px; margin-top: 4px; align-items: center; }
+.loader-login-btn {
+  background: #7ab8ff; color: #0a1428;
+  border: none; border-radius: 4px; padding: 7px 14px;
+  font-weight: 600; font-size: 12px; cursor: pointer;
+}
+.loader-login-btn:disabled { opacity: 0.5; cursor: default; }
+.loader-skip {
+  background: transparent; border: none;
+  color: rgba(203, 213, 225, 0.7); font-size: 12px;
+  text-decoration: underline; cursor: pointer; padding: 6px 8px;
+}
+.loader-skip:hover { color: #cbd5e1; }
+
 /* ---------- Projects (home): tilted blueprint grid + cubes ----------
    Deep navy backdrop with a subtle 2D-rotated grid (fine cells + an accent
    grid every 6 cells) and a soft radial vignette pulling focus to the centre.
