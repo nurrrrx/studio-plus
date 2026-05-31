@@ -22,6 +22,9 @@ const PROP_SVGS = {
   pergola: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 160"><g stroke="#1c1813" stroke-linecap="round" stroke-linejoin="round" fill="none"><line x1="18" y1="60" x2="18" y2="152" stroke-width="3"/><line x1="98" y1="60" x2="98" y2="152" stroke-width="3"/><line x1="38" y1="40" x2="38" y2="132" stroke-width="3"/><line x1="118" y1="40" x2="118" y2="132" stroke-width="3"/><line x1="14" y1="60" x2="102" y2="60" stroke-width="3"/><line x1="34" y1="40" x2="122" y2="40" stroke-width="3"/><line x1="22" y1="58" x2="42" y2="38" stroke-width="2.2"/><line x1="34" y1="58" x2="54" y2="38" stroke-width="2.2"/><line x1="46" y1="58" x2="66" y2="38" stroke-width="2.2"/><line x1="58" y1="58" x2="78" y2="38" stroke-width="2.2"/><line x1="70" y1="58" x2="90" y2="38" stroke-width="2.2"/><line x1="82" y1="58" x2="102" y2="38" stroke-width="2.2"/><line x1="94" y1="58" x2="114" y2="38" stroke-width="2.2"/><path d="M 18 60 Q 26 70 38 65"/><path d="M 98 60 Q 106 70 118 65"/><path d="M 38 65 L 38 40" stroke-width="0.6" stroke-dasharray="2 2" opacity="0.55"/><path d="M 118 65 L 118 40" stroke-width="0.6" stroke-dasharray="2 2" opacity="0.55"/><line x1="6" y1="155" x2="128" y2="138" stroke-width="1.2"/></g></svg>`,
   tile: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="1.5" y="1.5" width="97" height="97" fill="rgba(245,240,230,0.92)" stroke="#1c1813" stroke-width="1.6" stroke-linejoin="round"/><g fill="none" stroke="#1c1813" stroke-width="1.1" stroke-linejoin="round"><polygon points="22,16 28,13 32,18 27,24 18,21"/><polygon points="44,20 50,17 53,23 47,26 42,24"/><polygon points="68,16 74,14 77,21 71,25 65,22"/><polygon points="18,40 25,37 29,42 25,48 16,45"/><polygon points="45,42 52,40 55,45 50,50 43,47"/><polygon points="72,46 79,43 82,49 76,53 70,50"/><polygon points="14,62 21,60 24,66 19,70 12,67"/><polygon points="40,64 46,62 50,68 44,72 38,68"/><polygon points="68,68 75,66 79,72 73,76 66,72"/><polygon points="26,82 33,80 36,86 30,88 24,85"/><polygon points="55,84 62,82 65,88 59,90 52,87"/></g></svg>`,
   bikelane: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24"><rect x="4" y="8" width="40" height="8" fill="rgba(217,38,38,0.25)" stroke="#d92626" stroke-width="1.2"/><g stroke="rgba(255,255,255,0.95)" stroke-width="2" stroke-linecap="round"><line x1="8" y1="12" x2="14" y2="12"/><line x1="20" y1="12" x2="26" y2="12"/><line x1="32" y1="12" x2="38" y2="12"/></g></svg>`,
+  beach: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24"><path d="M2 16 Q12 8 22 14 Q34 20 46 12 L46 22 L2 22 Z" fill="rgba(240,216,160,0.85)" stroke="#b08c50" stroke-width="1.2"/><g fill="#b08c50" opacity="0.7"><circle cx="10" cy="18" r="0.8"/><circle cx="18" cy="20" r="0.8"/><circle cx="26" cy="17" r="0.8"/><circle cx="34" cy="19" r="0.8"/><circle cx="40" cy="18" r="0.8"/></g></svg>`,
+  sea: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24"><rect x="2" y="6" width="44" height="14" fill="rgba(76,156,200,0.7)" stroke="#2f6a8a" stroke-width="1.2"/><g fill="none" stroke="#fff" stroke-width="0.9" opacity="0.85" stroke-linecap="round"><path d="M6 11 Q10 9 14 11 Q18 13 22 11 Q26 9 30 11"/><path d="M16 16 Q20 14 24 16 Q28 18 32 16 Q36 14 40 16"/></g></svg>`,
+  label: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 24"><text x="24" y="18" text-anchor="middle" font-family="Helvetica Neue, Arial, sans-serif" font-size="18" font-weight="700" fill="#1c1813">Aa</text></svg>`,
 };
 // Canopy tree shape variants. Each entry is a polygon-points string drawn on a
 // wide 110×96 viewBox (the bush spreads further than the default canopy). When
@@ -97,6 +100,15 @@ const PROP_META = {
   // Path-type prop. The user clicks to drop waypoints; the lane is a polyline
   // between them. size = line width (m). defaultColor = red.
   bikelane:{ label: 'Bicycle lane',     icon: PROP_URLS.bikelane, w: 48, h: 24, anchorY: 12, size: 4, path: true, defaultColor: '#d92626' },
+  // Polygon-type props. The user draws a polygon (click to add vertices,
+  // Enter to close). On render the polygon is corner-smoothed with Chaikin
+  // so it reads as a natural sandy / sea coastline.
+  beach:   { label: 'Beach (sand)',     icon: PROP_URLS.beach, w: 48, h: 24, anchorY: 12, polygon: true, defaultColor: '#f0d8a0' },
+  sea:     { label: 'Sea (water)',      icon: PROP_URLS.sea,   w: 48, h: 24, anchorY: 12, polygon: true, defaultColor: '#4c9cc8' },
+  // Text-type prop. Renders as 3D TextLayer (always faces camera). Click to
+  // place, prompt for text. Per-instance text + fontSize + colour editable
+  // via the Selected-prop panel.
+  label:   { label: 'Label (3D word)',  icon: PROP_URLS.label, w: 48, h: 24, anchorY: 12, text: true, defaultColor: '#1a1a1a', size: 4 },
 };
 
 // Top-down mini-bike pictogram used as a marker along the bike lane. Drawn in
@@ -119,6 +131,26 @@ import { Legend, ZoomBar, TiltBar, CtrlLabel, Compass, SaveButton, ControlStack,
 
 const hexRgb = (hex) => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 const NEUTRAL_RGB = hexRgb(UNKNOWN_COLOR);
+// Chaikin's corner-cutting algorithm. Smooths a (closed) polygon by replacing
+// each edge with two new vertices at the 1/4 and 3/4 marks. After N iterations
+// the polygon converges toward a B-spline-like rounded shape. Used for the
+// Beach prop so user-drawn polygons read as natural sandy coastlines.
+const chaikinSmooth = (points, iterations = 3) => {
+  let pts = points.slice();
+  for (let it = 0; it < iterations; it++) {
+    const out = [];
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[(i + 1) % n];
+      out.push([0.75 * x0 + 0.25 * x1, 0.75 * y0 + 0.25 * y1]);
+      out.push([0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1]);
+    }
+    pts = out;
+  }
+  return pts;
+};
+
 // Convex hull (monotone chain). Returns the CCW hull of an arbitrary point set.
 // Used to draw a tight polygon around each custom prop layer when exploded.
 const convexHull = (pts) => {
@@ -215,10 +247,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const [activeLayerId, setActiveLayerId] = useState(null);
   const [layersExploded, setLayersExploded] = useState(false);
   const [layerExplodeGap, setLayerExplodeGap] = useState(8); // metres between layers
-  const [showLayerPolygons, setShowLayerPolygons] = useState(false); // translucent slab + label per layer
+  const [showLayerPolygons, setShowLayerPolygons] = useState(false); // translucent slab per layer
+  const [showLayerNames, setShowLayerNames] = useState(true);        // floating name label per layer
   const [newLayerName, setNewLayerName] = useState('');
   const [rejectionMsg, setRejectionMsg] = useState(null); // brief on-canvas toast
   const rejectionTimerRef = useRef(null);
+  // When the user drags one of the in-progress polygon / lane vertices, we
+  // suppress the next deck.gl click so it doesn't also drop a new vertex.
+  const suppressClickRef = useRef(false);
   // Selection: click a placed prop in select mode → store its id, show an
   // inline editor with position / size / layer / colour. Esc deselects.
   const [selectMode, setSelectMode] = useState(false);
@@ -281,6 +317,81 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     el.addEventListener('wheel', onWheel, { passive: false, capture: true });
     return () => el.removeEventListener('wheel', onWheel, { capture: true });
   }, []);
+
+  // Drag-to-move-vertex while drawing a polygon / lane. Press near any
+  // in-progress vertex with mouse OR touch and drag it to a new position; the
+  // path / polygon updates live. Works for fillMode=='drawing' (polygon-fill),
+  // placeMode=='bikelane', and the beach / sea polygon-type props. We hit-test
+  // in screen space (≤ 22 px from a vertex), unproject the cursor to the
+  // surface plane on each move, and rewrite that vertex. Click is suppressed
+  // for the duration so the deck.gl click handler doesn't drop a new vertex.
+  useEffect(() => {
+    const el = wrapRef.current; if (!el) return;
+    const isDrawing = fillMode === 'drawing'
+                      || placeMode === 'bikelane'
+                      || (placeMode && PROP_META[placeMode]?.polygon);
+    if (!isDrawing) return;
+    let dragging = null;
+    const getPath = () => fillMode === 'drawing' ? fillPolygon : bikeLanePath;
+    const setPath = (mapper) => {
+      if (fillMode === 'drawing') setFillPolygon((v) => v.map(mapper));
+      else setBikeLanePath((v) => v.map(mapper));
+    };
+    const pointFrom = (e) => {
+      const ev = e.touches ? e.touches[0] : e;
+      const rect = el.getBoundingClientRect();
+      return { cx: ev.clientX - rect.left, cy: ev.clientY - rect.top };
+    };
+    const onDown = (e) => {
+      if (e.touches && e.touches.length > 1) return; // ignore 2-finger gestures
+      const { cx, cy } = pointFrom(e);
+      const deck = deckRef.current?.deck;
+      const vp = deck?.getViewports?.()[0]; if (!vp) return;
+      const path = getPath();
+      let bestIdx = -1, bestD = 22; // px hit radius
+      for (let i = 0; i < path.length; i++) {
+        const [vx, vy] = path[i];
+        let sx, sy;
+        try { [sx, sy] = vp.project([vx, vy, surfaceZ]); } catch { continue; }
+        const d = Math.hypot(sx - cx, sy - cy);
+        if (d < bestD) { bestD = d; bestIdx = i; }
+      }
+      if (bestIdx < 0) return;
+      e.preventDefault(); e.stopPropagation();
+      dragging = { idx: bestIdx };
+      suppressClickRef.current = true;
+    };
+    const onMove = (e) => {
+      if (!dragging) return;
+      const { cx, cy } = pointFrom(e);
+      const deck = deckRef.current?.deck;
+      const vp = deck?.getViewports?.()[0]; if (!vp) return;
+      let world;
+      try { world = vp.unproject([cx, cy], { targetZ: surfaceZ }); } catch { return; }
+      e.preventDefault();
+      setPath((v, i) => i === dragging.idx ? [world[0], world[1]] : v);
+    };
+    const onUp = () => {
+      dragging = null;
+      // Keep the click suppressed for one event loop so the just-finished drag
+      // doesn't also produce a "click → add vertex" right where we let go.
+      setTimeout(() => { suppressClickRef.current = false; }, 50);
+    };
+    el.addEventListener('mousedown',  onDown, true);
+    el.addEventListener('mousemove',  onMove);
+    window.addEventListener('mouseup', onUp);
+    el.addEventListener('touchstart', onDown, { passive: false, capture: true });
+    el.addEventListener('touchmove',  onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+    return () => {
+      el.removeEventListener('mousedown',  onDown, true);
+      el.removeEventListener('mousemove',  onMove);
+      window.removeEventListener('mouseup', onUp);
+      el.removeEventListener('touchstart', onDown, { capture: true });
+      el.removeEventListener('touchmove',  onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, [fillMode, placeMode, fillPolygon, bikeLanePath, surfaceZ]);
 
   // iPad / touch — two-finger PARALLEL drag (both fingers moving the same
   // direction, distance & angle between them roughly stable) tilts the camera.
@@ -439,11 +550,23 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       } else if (e.key === 'Enter' && fillMode === 'drawing' && fillPolygon.length >= 3) {
         setFillMode('config'); setFillCursor(null);
       } else if (e.key === 'Enter' && placeMode === 'bikelane' && bikeLanePath.length >= 2) {
-        // Commit the lane as a propsItems entry.
+        // Commit the bike lane.
         setPropsItems((p) => [...p, {
           id: Math.random().toString(36).slice(2, 10),
           type: 'bikelane',
           path: bikeLanePath,
+          layerId: activeLayerId || null,
+        }]);
+        setBikeLanePath([]);
+        setPlaceMode(null);
+      } else if (e.key === 'Enter' && placeMode && PROP_META[placeMode]?.polygon && bikeLanePath.length >= 3) {
+        // Commit a beach / sea polygon. The raw vertices are stored — we
+        // smooth at render time so the user could later "rebuild" the shape
+        // by editing vertices in a future version.
+        setPropsItems((p) => [...p, {
+          id: Math.random().toString(36).slice(2, 10),
+          type: placeMode,
+          polygon: bikeLanePath,
           layerId: activeLayerId || null,
         }]);
         setBikeLanePath([]);
@@ -463,12 +586,34 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     return (idx + 1) * layerExplodeGap;
   };
 
+  // Layer transform: per-layer visibility flag + (x, y, z) offsets applied to
+  // every prop in that layer. Used by both IconLayers, the bike-lane PathLayer
+  // and the slab polygons so a layer can be shifted left / right / up + down
+  // independently. Unassigned props have no transform.
+  const layerTransform = (layerId) => {
+    if (!layerId) return { dx: 0, dy: 0, dz: 0, visible: true };
+    const l = propLayers.find((x) => x.id === layerId);
+    if (!l) return { dx: 0, dy: 0, dz: 0, visible: true };
+    return {
+      dx: l.offsetX || 0,
+      dy: l.offsetY || 0,
+      dz: l.offsetZ || 0,
+      visible: l.visible !== false,
+    };
+  };
+  const isLayerVisible = (layerId) => {
+    if (!layerId) return true;
+    const l = propLayers.find((x) => x.id === layerId);
+    return !l || l.visible !== false;
+  };
+
   // Convex hull polygon for each custom layer that has props in it. We pad the
   // hull outward from its centroid so the slab clears the icons a bit. For
   // layers with < 3 props we synthesise a small square so the slab is still
   // visible. Used when layersExploded is on.
   const layerHulls = useMemo(() => {
     return propLayers.map((layer) => {
+      if (layer.visible === false) return null;
       const items = propsItems.filter((p) => p.layerId === layer.id);
       if (items.length === 0 && !(layer.polygon && layer.polygon.length >= 3)) return null;
       // If the layer carries a polygon (saved from a polygon-fill operation),
@@ -811,7 +956,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       showGrid, gridExtent, gridColor, gridWidth, bgColor, showGroundPlane,
       numbersThrough, bldgFill, bldgLine, podiumFill, roadFill, roofWidth, edgeWidth, explodeGap,
       showTrees, fillCutouts, propsItems, propSizes, propColors, propAvoidIntersect, smartPlace,
-      propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons,
+      propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons, showLayerNames,
       photoIncludeUi,
       shape, size, basemapStyle,
       archBuildings, archRoads, archBasemap,
@@ -855,6 +1000,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     if (typeof s.layersExploded === 'boolean') setLayersExploded(s.layersExploded);
     if (typeof s.layerExplodeGap === 'number') setLayerExplodeGap(s.layerExplodeGap);
     if (typeof s.showLayerPolygons === 'boolean') setShowLayerPolygons(s.showLayerPolygons);
+    if (typeof s.showLayerNames === 'boolean') setShowLayerNames(s.showLayerNames);
     if (typeof s.photoIncludeUi === 'boolean') setPhotoIncludeUi(s.photoIncludeUi);
     if (typeof s.propAvoidIntersect === 'boolean') setPropAvoidIntersect(s.propAvoidIntersect);
     if (s.smartPlace && typeof s.smartPlace === 'object') setSmartPlace(s.smartPlace);
@@ -1166,8 +1312,16 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     ];
     const slabs = layerHulls.map((h) => {
       const idx = propLayers.findIndex((l) => l.id === h.id);
-      const z = surfaceZ + (idx + 1) * layerExplodeGap - 0.04;
-      return { ...h, idx, z, color: PALETTE[idx % PALETTE.length] };
+      const layer = propLayers[idx];
+      const t = layerTransform(h.id);
+      const z = surfaceZ + (idx + 1) * layerExplodeGap - 0.04 + t.dz;
+      // Apply layer xy offset to the polygon + centroid so the slab tracks
+      // the props it's representing.
+      const polygon = h.polygon.map(([x, y]) => [x + t.dx, y + t.dy]);
+      const centroid = [h.centroid[0] + t.dx, h.centroid[1] + t.dy];
+      // Layer's own picked colour wins; otherwise rotate through the palette.
+      const color = layer?.color ? hexRgb(layer.color) : PALETTE[idx % PALETTE.length];
+      return { ...h, idx, z, color, polygon, centroid };
     });
     layers.push(new PolygonLayer({
       id: 'layer-slabs', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
@@ -1180,11 +1334,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       parameters: { depthTest: false },
       updateTriggers: { getPolygon: [surfaceZ, layerExplodeGap, layersExploded] },
     }));
-    layers.push(new TextLayer({
+    if (showLayerNames) layers.push(new TextLayer({
       id: 'layer-labels', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
       data: slabs,
-      getPosition: (d) => [d.centroid[0], d.centroid[1], d.z + 0.4],
-      getText: (d) => `${d.name} · ${d.count}`,
+      // Lift the label well above the slab so it clearly floats over the
+      // layer instead of sitting on it.
+      getPosition: (d) => [d.centroid[0], d.centroid[1], d.z + Math.max(3, layerExplodeGap * 0.4)],
+      getText: (d) => d.name,
       getSize: 14, getColor: (d) => [...d.color, 255],
       billboard: true,
       fontSettings: { sdf: true },
@@ -1193,11 +1349,90 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     }));
   }
 
+  // Polygon-type props (beach / sea). Rendered as PolygonLayer with
+  // Chaikin-smoothed vertices so the user-drawn polygon reads as a soft,
+  // natural-feeling area instead of straight segments. Pickable for delete /
+  // select. Drawn BEFORE the road / buildings so they sit underneath
+  // structures, like real terrain.
+  const polyPropItems = propsItems.filter((p) => PROP_META[p.type]?.polygon && Array.isArray(p.polygon) && p.polygon.length >= 3 && isLayerVisible(p.layerId));
+  if (polyPropItems.length > 0) {
+    const smoothCache = new Map();
+    const smoothFor = (item) => {
+      if (smoothCache.has(item.id)) return smoothCache.get(item.id);
+      const out = chaikinSmooth(item.polygon, 3);
+      smoothCache.set(item.id, out);
+      return out;
+    };
+    layers.push(new PolygonLayer({
+      id: 'poly-props', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      data: polyPropItems, pickable: true,
+      autoHighlight: deleteMode || (selectMode && !selectedPropId),
+      highlightColor: moveMode ? [60, 200, 110, 180]
+                      : (selectMode || selectedPropId) ? [76, 184, 220, 200]
+                      : [220, 60, 60, 140],
+      getPolygon: (d) => {
+        const t = layerTransform(d.layerId);
+        const z = surfaceZ + 0.015 + layerExplodeOffset(d.layerId) + t.dz;
+        return smoothFor(d).map(([x, y]) => [x + t.dx, y + t.dy, z]);
+      },
+      extruded: false, filled: true, stroked: true,
+      getFillColor: (d) => {
+        const col = d.color || propColors[d.type] || PROP_META[d.type].defaultColor;
+        return [...hexRgb(col), 210];
+      },
+      getLineColor: (d) => {
+        const col = d.color || propColors[d.type] || PROP_META[d.type].defaultColor;
+        const rgb = hexRgb(col);
+        return [Math.max(0, rgb[0] - 50), Math.max(0, rgb[1] - 50), Math.max(0, rgb[2] - 50), 230];
+      },
+      lineWidthUnits: 'pixels', getLineWidth: 1.2,
+      updateTriggers: {
+        getPolygon: [surfaceZ, propLayers, layersExploded, layerExplodeGap],
+        getFillColor: [propColors], getLineColor: [propColors],
+      },
+    }));
+  }
+
+  // Label (3D word) props. Always-facing-camera TextLayer in Helvetica Neue.
+  const labelItems = propsItems.filter((p) => p.type === 'label' && isLayerVisible(p.layerId));
+  if (labelItems.length > 0) {
+    layers.push(new TextLayer({
+      id: 'labels', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      data: labelItems, pickable: true,
+      autoHighlight: deleteMode || (selectMode && !selectedPropId),
+      highlightColor: moveMode ? [60, 200, 110, 180]
+                      : (selectMode || selectedPropId) ? [76, 184, 220, 200]
+                      : [220, 60, 60, 140],
+      getPosition: (d) => {
+        const t = layerTransform(d.layerId);
+        const baseZ = (d.position[2] != null ? d.position[2] : surfaceZ);
+        return [d.position[0] + t.dx, d.position[1] + t.dy, baseZ + 0.5 + layerExplodeOffset(d.layerId) + t.dz];
+      },
+      getText: (d) => d.text || '',
+      getSize: (d) => d.fontSize || 16,
+      getColor: (d) => {
+        const c = d.color || propColors.label || PROP_META.label.defaultColor;
+        return [...hexRgb(c), 255];
+      },
+      fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif',
+      fontWeight: 'bold',
+      fontSettings: { sdf: true },
+      billboard: true,
+      outlineColor: [255, 255, 255, 230], outlineWidth: 4,
+      sizeUnits: 'pixels',
+      parameters: { depthTest: false },
+      updateTriggers: {
+        getPosition: [surfaceZ, propLayers, layersExploded, layerExplodeGap],
+        getText: [propsItems], getColor: [propColors], getSize: [propsItems],
+      },
+    }));
+  }
+
   // Placed bicycle lanes — PathLayer. Each entry is a propsItems item with
   // type 'bikelane' and a path array. Line width = propSizes.bikelane.h (m).
   // Colour = propColors.bikelane || defaultColor. Pickable so delete-mode and
   // ⌘-click can remove a lane.
-  const bikeLaneItems = propsItems.filter((p) => p.type === 'bikelane' && Array.isArray(p.path) && p.path.length >= 2);
+  const bikeLaneItems = propsItems.filter((p) => p.type === 'bikelane' && Array.isArray(p.path) && p.path.length >= 2 && isLayerVisible(p.layerId));
   if (bikeLaneItems.length > 0) {
     const widthM = (propSizes.bikelane?.h ?? PROP_META.bikelane.size);
     const col = propColors.bikelane || PROP_META.bikelane.defaultColor;
@@ -1205,7 +1440,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       id: 'bikelanes', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
       data: bikeLaneItems, pickable: true,
       autoHighlight: deleteMode, highlightColor: [220, 60, 60, 140],
-      getPath: (d) => d.path.map(([x, y]) => [x, y, surfaceZ + 0.03 + layerExplodeOffset(d.layerId)]),
+      getPath: (d) => {
+        const t = layerTransform(d.layerId);
+        return d.path.map(([x, y]) => [x + t.dx, y + t.dy, surfaceZ + 0.03 + layerExplodeOffset(d.layerId) + t.dz]);
+      },
       getColor: [...hexRgb(col), 220],
       widthUnits: 'meters', getWidth: widthM,
       capRounded: true, jointRounded: true,
@@ -1219,7 +1457,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     const markers = [];
     const SPACING = Math.max(6, widthM * 2.2);
     for (const lane of bikeLaneItems) {
-      const z = surfaceZ + 0.06 + layerExplodeOffset(lane.layerId);
+      const lt = layerTransform(lane.layerId);
+      const z = surfaceZ + 0.06 + layerExplodeOffset(lane.layerId) + lt.dz;
       let acc = SPACING / 2; // first marker half a step in so it's centred
       for (let i = 1; i < lane.path.length; i++) {
         const [x0, y0] = lane.path[i - 1];
@@ -1230,7 +1469,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         while (acc < segLen) {
           const t = acc / segLen;
           markers.push({
-            position: [x0 + t * (x1 - x0), y0 + t * (y1 - y0), z],
+            position: [x0 + t * (x1 - x0) + lt.dx, y0 + t * (y1 - y0) + lt.dy, z],
             angle: ang,
             laneId: lane.id,
           });
@@ -1283,7 +1522,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // so the road and building draw calls come later and visually cover any
   // tile portion that extends onto them, even in top-down camera angles where
   // GL depth sorting doesn't disambiguate co-planar layers.
-  const flatPropItemsEarly = propsItems.filter((p) => PROP_META[p.type]?.flat);
+  const flatPropItemsEarly = propsItems.filter((p) => PROP_META[p.type]?.flat && isLayerVisible(p.layerId));
   if (flatPropItemsEarly.length > 0) {
     const movingIdxFlat = movingPropId
       ? flatPropItemsEarly.findIndex((p) => p.id === movingPropId)
@@ -1302,8 +1541,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       highlightColor: flatHighlightColor,
       highlightedObjectIndex: highlightFlatIdx,
       getPosition: (d) => {
-        const z = (d.position[2] != null ? d.position[2] : surfaceZ) + 0.02 + layerExplodeOffset(d.layerId);
-        return [d.position[0], d.position[1], z];
+        const t = layerTransform(d.layerId);
+        const z = (d.position[2] != null ? d.position[2] : surfaceZ) + 0.02 + layerExplodeOffset(d.layerId) + t.dz;
+        return [d.position[0] + t.dx, d.position[1] + t.dy, z];
       },
       getIcon: (d) => {
         const m = PROP_META[d.type] || PROP_META.tree;
@@ -1635,8 +1875,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     // layers array (before roads / buildings) so that road and building fills
     // visually cover any tile portion that extends onto them — see "flat
     // props" insertion above the roads layer.
-    const billboardItems = propsItems.filter((p) => !PROP_META[p.type]?.flat);
-    const flatItems      = propsItems.filter((p) =>  PROP_META[p.type]?.flat);
+    const billboardItems = propsItems.filter((p) => !PROP_META[p.type]?.flat && p.type !== 'bikelane' && isLayerVisible(p.layerId));
+    const flatItems      = propsItems.filter((p) =>  PROP_META[p.type]?.flat && isLayerVisible(p.layerId));
     const propsIconConfig = (id, items, billboard) => {
       // When a prop is picked up in move mode, force-highlight it via
       // highlightedObjectIndex (forces deck.gl to tint that specific feature).
@@ -1657,8 +1897,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       highlightColor: hlColor,
       highlightedObjectIndex: hlIdx,
       getPosition: (d) => {
-        const z = (d.position[2] != null ? d.position[2] : surfaceZ) + 0.02 + layerExplodeOffset(d.layerId);
-        return [d.position[0], d.position[1], z];
+        const t = layerTransform(d.layerId);
+        const z = (d.position[2] != null ? d.position[2] : surfaceZ) + 0.02 + layerExplodeOffset(d.layerId) + t.dz;
+        return [d.position[0] + t.dx, d.position[1] + t.dy, z];
       },
       getIcon: (d) => {
         const m = PROP_META[d.type] || PROP_META.tree;
@@ -1752,9 +1993,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 }
               }}
               onClick={(info) => {
+                // Vertex-drag just finished — eat this click so it doesn't
+                // drop a new waypoint where we let go.
+                if (suppressClickRef.current) { suppressClickRef.current = false; return; }
                 const mod = info.srcEvent && (info.srcEvent.metaKey || info.srcEvent.ctrlKey || info.srcEvent.shiftKey);
                 const isPropPick = info.layer
-                  && (info.layer.id === 'props-billboard' || info.layer.id === 'props-flat' || info.layer.id === 'bikelanes')
+                  && (info.layer.id === 'props-billboard' || info.layer.id === 'props-flat'
+                      || info.layer.id === 'bikelanes' || info.layer.id === 'poly-props' || info.layer.id === 'labels')
                   && info.object;
 
                 // Delete mode OR Cmd/Ctrl/Shift + click on a placed prop → remove it.
@@ -1818,11 +2063,29 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 // come from unprojecting the cursor against z = surfaceZ. We
                 // also pick a random canopy variant so each placed canopy gets
                 // a unique tree-top shape.
-                // Bicycle-lane drawing: each click adds a waypoint to the
-                // current lane buffer. Enter / Esc commit / cancel.
-                if (placeMode === 'bikelane') {
+                // Path / polygon drawing modes (bikelane, beach, sea): each
+                // click adds a vertex to the shared bikeLanePath buffer. Enter
+                // commits (in the keydown handler below). Esc cancels.
+                if (placeMode === 'bikelane' || PROP_META[placeMode]?.polygon) {
                   const target = computeSurfacePos(info); if (!target) return;
                   setBikeLanePath((p) => [...p, [target[0], target[1]]]);
+                  return;
+                }
+                // Label (text) prop: prompt for the word, drop it at the
+                // click. Selected-prop editor lets you change text / size /
+                // colour later.
+                if (placeMode === 'label') {
+                  const target = computeSurfacePos(info); if (!target) return;
+                  const text = window.prompt('Label text:', 'Label');
+                  if (!text) return;
+                  setPropsItems((p) => [...p, {
+                    id: Math.random().toString(36).slice(2, 10),
+                    type: 'label',
+                    position: target,
+                    text, fontSize: 12,
+                    layerId: activeLayerId || null,
+                  }]);
+                  setPlaceMode(null);
                   return;
                 }
                 if (placeMode) {
@@ -1876,7 +2139,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         const wDefault = typeSize.w ?? +(hDefault * naturalAspect).toFixed(2);
         const hVal = p.instanceSize?.h ?? hDefault;
         const wVal = p.instanceSize?.w ?? wDefault;
-        const isPath = !!m.path;
+        const isPath = !!m.path || !!m.polygon || !!m.text;
         return (
           <div style={{ position: 'absolute', right: 16, top: 'calc(var(--header-inset, 0px) + 16px)',
                         zIndex: 8, background: 'rgba(255,255,255,0.96)', border: '1px solid var(--line)',
@@ -1915,6 +2178,47 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 Path · {p.path?.length || 0} vertices
               </div>
             )}
+            {m.polygon && (
+              <>
+                <div style={{ fontSize: 11, color: '#6f685c', padding: '2px 0' }}>
+                  Polygon · {p.polygon?.length || 0} vertices (smoothed)
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                gap: 6, padding: '2px 0' }}>
+                  <span style={{ color: '#6f685c' }}>Colour</span>
+                  <input type="color"
+                         value={p.color || propColors[p.type] || m.defaultColor || '#cccccc'}
+                         onChange={(e) => upd({ color: e.target.value })}
+                         style={{ width: 32, height: 20, border: '1px solid var(--line)', borderRadius: 3, padding: 0, cursor: 'pointer' }} />
+                </label>
+              </>
+            )}
+            {m.text && (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                gap: 6, padding: '2px 0' }}>
+                  <span style={{ color: '#6f685c' }}>Text</span>
+                  <input type="text" value={p.text || ''}
+                         onChange={(e) => upd({ text: e.target.value })}
+                         style={{ flex: 1, fontSize: 11, padding: '2px 5px',
+                                  border: '1px solid var(--line)', borderRadius: 3, marginLeft: 8 }} />
+                </label>
+                <NumStepRow label="Font size (px)" value={p.fontSize || 16} step={2} min={4} max={200}
+                            onChange={(v) => upd({ fontSize: v })} />
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                gap: 6, padding: '2px 0' }}>
+                  <span style={{ color: '#6f685c' }}>Colour</span>
+                  <input type="color"
+                         value={p.color || propColors.label || m.defaultColor || '#1a1a1a'}
+                         onChange={(e) => upd({ color: e.target.value })}
+                         style={{ width: 32, height: 20, border: '1px solid var(--line)', borderRadius: 3, padding: 0, cursor: 'pointer' }} />
+                </label>
+                <NumStepRow label="X (m)" value={+p.position[0].toFixed(2)} step={1}
+                            onChange={(v) => upd({ position: [v, p.position[1], p.position[2]] })} />
+                <NumStepRow label="Y (m)" value={+p.position[1].toFixed(2)} step={1}
+                            onChange={(v) => upd({ position: [p.position[0], v, p.position[2]] })} />
+              </>
+            )}
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                             gap: 6, padding: '4px 0 2px 0' }}>
               <span style={{ color: '#6f685c' }}>Layer</span>
@@ -1932,6 +2236,76 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                                background: '#b03030', color: '#fff', borderRadius: 4, cursor: 'pointer' }}>
                 Delete
               </button>
+            </div>
+          </div>
+        );
+      })()}
+      {(() => {
+        const isPolyDraw = !!placeMode && PROP_META[placeMode]?.polygon;
+        const isLineDraw = placeMode === 'bikelane';
+        const isFillDraw = fillMode === 'drawing';
+        if (!isPolyDraw && !isLineDraw && !isFillDraw) return null;
+        const buf = isFillDraw ? fillPolygon : bikeLanePath;
+        const minNeeded = isLineDraw ? 2 : 3;
+        const undo = () => {
+          if (isFillDraw) setFillPolygon((v) => v.slice(0, -1));
+          else setBikeLanePath((v) => v.slice(0, -1));
+        };
+        const cancel = () => {
+          if (isFillDraw) { setFillMode('idle'); setFillPolygon([]); }
+          if (bikeLanePath.length) setBikeLanePath([]);
+          if (isLineDraw || isPolyDraw) setPlaceMode(null);
+        };
+        const done = () => {
+          if (buf.length < minNeeded) return;
+          if (isFillDraw) { setFillMode('config'); setFillCursor(null); return; }
+          if (isLineDraw) {
+            setPropsItems((p) => [...p, { id: Math.random().toString(36).slice(2, 10),
+              type: 'bikelane', path: bikeLanePath, layerId: activeLayerId || null }]);
+            setBikeLanePath([]); setPlaceMode(null); return;
+          }
+          if (isPolyDraw) {
+            setPropsItems((p) => [...p, { id: Math.random().toString(36).slice(2, 10),
+              type: placeMode, polygon: bikeLanePath, layerId: activeLayerId || null }]);
+            setBikeLanePath([]); setPlaceMode(null); return;
+          }
+        };
+        const label = isPolyDraw ? (PROP_META[placeMode]?.label || placeMode)
+                      : isLineDraw ? 'Bicycle lane'
+                      : 'Polygon fill';
+        const btn = (bg, color, border) => ({
+          padding: '7px 12px', fontSize: 12, fontWeight: 600,
+          border: `1px solid ${border}`, borderRadius: 4,
+          background: bg, color, cursor: 'pointer',
+          touchAction: 'manipulation',
+        });
+        return (
+          <div style={{ position: 'absolute', left: '50%',
+                        bottom: 'calc(var(--footer-inset, 0px) + 16px)',
+                        transform: 'translateX(-50%)',
+                        background: 'rgba(255,255,255,0.97)',
+                        border: '1px solid var(--line)', borderRadius: 6,
+                        padding: '6px 8px', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+                        display: 'flex', gap: 8, alignItems: 'center', zIndex: 50 }}>
+            <span style={{ fontSize: 11, color: '#6f685c', marginRight: 4 }}>
+              {label} · {buf.length} pt{buf.length === 1 ? '' : 's'}
+            </span>
+            <button onClick={undo} disabled={buf.length === 0}
+                    style={{ ...btn('#fff', '#3a342c', 'var(--line)'),
+                             opacity: buf.length === 0 ? 0.45 : 1 }}>
+              ↶ Undo last
+            </button>
+            <button onClick={done} disabled={buf.length < minNeeded}
+                    style={{ ...btn(buf.length < minNeeded ? '#a3c8b0' : '#2f6f3e', '#fff', '#2f6f3e'),
+                             opacity: buf.length < minNeeded ? 0.7 : 1 }}>
+              ✓ Done
+            </button>
+            <button onClick={cancel}
+                    style={btn('#b03030', '#fff', '#b03030')}>
+              ✕ Cancel
+            </button>
+            <div style={{ fontSize: 10, color: '#9a948a', marginLeft: 4 }}>
+              tap a vertex to drag it
             </div>
           </div>
         );
@@ -2363,12 +2737,23 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               {propLayers.map((l, i) => {
                 const count = propsItems.filter((p) => p.layerId === l.id).length;
                 const isActive = l.id === activeLayerId;
+                const visible = l.visible !== false;
+                const updateLayer = (changes) => setPropLayers((ls) => ls.map((x) => x.id === l.id ? { ...x, ...changes } : x));
                 return (
                   <div key={l.id} style={{
-                          display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px',
+                          display: 'flex', flexDirection: 'column',
                           background: isActive ? 'rgba(60, 200, 110, 0.16)' : 'transparent',
                           borderTop: i === 0 ? 'none' : '1px solid var(--line)' }}>
-                    <span style={{ flex: 1, fontSize: 11, color: '#3a342c', cursor: 'pointer' }}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px' }}>
+                    <button onClick={() => updateLayer({ visible: !visible })}
+                            title={visible ? 'hide this layer' : 'show this layer'}
+                            style={{ fontSize: 12, padding: '1px 5px', border: '1px solid var(--line)',
+                                     background: '#fff', borderRadius: 3, cursor: 'pointer',
+                                     color: visible ? '#3a342c' : '#bdb6a4', lineHeight: 1, opacity: visible ? 1 : 0.6 }}>
+                      {visible ? '\u{1F441}' : '\u{2715}'}
+                    </button>
+                    <span style={{ flex: 1, fontSize: 11, color: visible ? '#3a342c' : '#9a948a',
+                                   cursor: 'pointer', textDecoration: visible ? 'none' : 'line-through' }}
                           title="set active"
                           onClick={() => setActiveLayerId(l.id)}>
                       <b>{i + 1}.</b> {l.name}
@@ -2412,6 +2797,38 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                       ×
                     </button>
                   </div>
+                  {/* per-layer offsets row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px 4px 28px',
+                                fontSize: 10, color: '#6f685c' }}>
+                    <span title="Shift the layer along the X axis">X</span>
+                    <input type="number" step={1} value={l.offsetX || 0}
+                           onChange={(e) => updateLayer({ offsetX: Number(e.target.value) || 0 })}
+                           style={{ width: 44, fontSize: 10, padding: '1px 3px', textAlign: 'center' }} />
+                    <span title="Shift the layer along the Y axis">Y</span>
+                    <input type="number" step={1} value={l.offsetY || 0}
+                           onChange={(e) => updateLayer({ offsetY: Number(e.target.value) || 0 })}
+                           style={{ width: 44, fontSize: 10, padding: '1px 3px', textAlign: 'center' }} />
+                    <span title="Extra vertical offset on top of the explode gap">Z</span>
+                    <input type="number" step={0.5} value={l.offsetZ || 0}
+                           onChange={(e) => updateLayer({ offsetZ: Number(e.target.value) || 0 })}
+                           style={{ width: 44, fontSize: 10, padding: '1px 3px', textAlign: 'center' }} />
+                    {(l.offsetX || l.offsetY || l.offsetZ) ? (
+                      <button onClick={() => updateLayer({ offsetX: 0, offsetY: 0, offsetZ: 0 })}
+                              title="reset offsets"
+                              style={{ fontSize: 9, padding: '1px 4px', border: '1px solid var(--line)',
+                                       background: '#fff', borderRadius: 3, cursor: 'pointer', color: '#6f685c' }}>
+                        ↻
+                      </button>
+                    ) : null}
+                    <span style={{ marginLeft: 'auto' }} title="layer slab + label colour">
+                      <input type="color"
+                             value={l.color || ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8]}
+                             onChange={(e) => updateLayer({ color: e.target.value })}
+                             style={{ width: 22, height: 16, border: '1px solid var(--line)',
+                                      borderRadius: 3, padding: 0, cursor: 'pointer' }} />
+                    </span>
+                  </div>
+                  </div>
                 );
               })}
             </div>
@@ -2433,6 +2850,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               <input type="checkbox" checked={showLayerPolygons}
                      onChange={(e) => setShowLayerPolygons(e.target.checked)} />
               <span style={{ color: '#3a342c' }}>Show layer polygons</span>
+            </label>
+          )}
+          {layersExploded && propLayers.length > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0 2px 22px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={showLayerNames}
+                     onChange={(e) => setShowLayerNames(e.target.checked)} />
+              <span style={{ color: '#3a342c' }}>Show layer names</span>
             </label>
           )}
           <div style={{ borderTop: '1px solid var(--line)', margin: '6px 0' }} />
