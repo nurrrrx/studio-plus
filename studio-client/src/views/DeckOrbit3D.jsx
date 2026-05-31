@@ -853,13 +853,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 
   // Unproject the click pixel to the current surface plane (z = surfaceZ).
   const computeSurfacePos = (info) => {
-    // Prefer info.coordinate — deck.gl computes it from the same picking pass
-    // that drew the scene, so it's pixel-perfect with what's on screen. The
-    // CPU-side vp.unproject path we used to try first can drift (DPR, camera
-    // matrix updates) and land the vertex somewhere visibly off the click.
-    if (info?.coordinate) return [info.coordinate[0], info.coordinate[1], surfaceZ];
-    // Fallback: reproject via the viewport if for some reason coordinate is
-    // missing (e.g. clicks outside the canvas bounds during a drag).
+    // Cast the click ray against the GROUND PLANE (z = surfaceZ) regardless
+    // of what the picking pass hit. info.coordinate uses the picked layer's
+    // own z — if the click ray hits a building roof or the AOI platform top
+    // first, info.coordinate is the XY at THAT z. Forcing it to surfaceZ
+    // creates a visible offset because horizontally the roof-XY and ground-
+    // XY are different along an angled ray. vp.unproject with targetZ does
+    // the ray/plane intersection correctly.
     const deck = deckRef.current?.deck;
     const vp = deck?.getViewports?.()[0];
     if (vp && info?.x != null && info?.y != null) {
@@ -868,7 +868,21 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         return [w[0], w[1], surfaceZ];
       } catch {}
     }
+    // Last-resort fallback for clicks where x/y are missing (rare).
+    if (info?.coordinate) return [info.coordinate[0], info.coordinate[1], surfaceZ];
     return null;
+  };
+  // Project a world (X, Y) on the ground plane back to canvas pixels. The
+  // SVG overlay below uses this so the in-progress polygon vertices stay
+  // glued to the cursor — vp.unproject ↔ vp.project is a round-trip
+  // identity, so a vertex always renders exactly at the pixel the user
+  // clicked, and updates as they orbit / zoom.
+  const projectToScreen = (x, y) => {
+    const deck = deckRef.current?.deck;
+    const vp = deck?.getViewports?.()[0];
+    if (!vp) return null;
+    try { const s = vp.project([x, y, surfaceZ]); return [s[0], s[1]]; }
+    catch { return null; }
   };
 
   // Validate that pos doesn't intersect a building or road, if the toggle is
@@ -1886,98 +1900,12 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       getSize: 8, sizeUnits: 'meters', billboard: true,
     }));
   }
-  // In-progress polygon for the fill flow:
-  //  • Filled translucent body (≥3 verts) — preview of the area you're drawing.
-  //  • Solid outline + dots at each placed vertex.
-  //  • Rubber-band line from the last vertex to the cursor, with a separate
-  //    closing line back to the first vertex when ≥3 verts exist.
-  //  • First vertex grows + brightens when the cursor is within close range
-  //    so you can SEE you're about to close the loop.
-  if (fillPolygon.length > 0) {
-    const z = surfaceZ + 0.06;
-    // Close threshold (metres). Widened from 3 → 6 so it's not a pixel-hunt.
-    const CLOSE_R = 6;
-    const firstV = fillPolygon[0];
-    const nearClose = fillPolygon.length >= 3 && fillCursor
-      ? (() => { const dx = fillCursor[0] - firstV[0], dy = fillCursor[1] - firstV[1]; return dx * dx + dy * dy <= CLOSE_R * CLOSE_R; })()
-      : false;
-
-    // Live preview polygon body — uses the cursor as a "virtual last vertex"
-    // so the area you're drawing updates as you move the mouse.
-    const previewPoly = (fillMode === 'drawing' && fillCursor && fillPolygon.length >= 2)
-      ? [...fillPolygon, [fillCursor[0], fillCursor[1]]]
-      : fillPolygon;
-    if (previewPoly.length >= 3) {
-      layers.push(new PolygonLayer({
-        id: 'fill-poly-body', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        data: [{ polygon: previewPoly }],
-        getPolygon: (d) => d.polygon.map(([x, y]) => [x, y, z]),
-        extruded: false, filled: true, stroked: false,
-        getFillColor: [60, 200, 110, 55],
-        parameters: { depthTest: false },
-        updateTriggers: { getPolygon: [fillCursor] },
-      }));
-    }
-    // Solid outline along the placed vertices.
-    layers.push(new PathLayer({
-      id: 'fill-poly-outline', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-      data: [{ path: [...fillPolygon, fillPolygon[0]].map(([x, y]) => [x, y, z + 0.01]) }],
-      getPath: (d) => d.path,
-      getColor: [40, 160, 80, 240],
-      widthUnits: 'pixels', getWidth: 2.4,
-      parameters: { depthTest: false },
-    }));
-    // Rubber-band: from last vertex → cursor.
-    if (fillMode === 'drawing' && fillCursor) {
-      const lastV = fillPolygon[fillPolygon.length - 1];
-      layers.push(new PathLayer({
-        id: 'fill-poly-rubber', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        data: [{ path: [[lastV[0], lastV[1], z + 0.01], [fillCursor[0], fillCursor[1], z + 0.01]] }],
-        getPath: (d) => d.path,
-        getColor: [40, 160, 80, 200],
-        widthUnits: 'pixels', getWidth: 2,
-        parameters: { depthTest: false },
-        updateTriggers: { getPath: [fillCursor, fillPolygon.length] },
-      }));
-      // Cursor → first vertex (closing preview) — appears when ≥3 verts.
-      if (fillPolygon.length >= 3) {
-        layers.push(new PathLayer({
-          id: 'fill-poly-close-preview', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-          data: [{ path: [[fillCursor[0], fillCursor[1], z + 0.01], [firstV[0], firstV[1], z + 0.01]] }],
-          getPath: (d) => d.path,
-          getColor: nearClose ? [255, 200, 60, 230] : [40, 160, 80, 120],
-          widthUnits: 'pixels', getWidth: nearClose ? 2.4 : 1.4,
-          parameters: { depthTest: false },
-          updateTriggers: { getPath: [fillCursor, fillPolygon.length], getColor: [nearClose], getWidth: [nearClose] },
-        }));
-      }
-      // Cursor dot — small marker where the next vertex would land.
-      layers.push(new ScatterplotLayer({
-        id: 'fill-poly-cursor', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        data: [{ position: [fillCursor[0], fillCursor[1], z + 0.03] }],
-        getPosition: (d) => d.position,
-        getRadius: 0.7, radiusUnits: 'meters',
-        filled: true, getFillColor: [255, 255, 255, 220],
-        stroked: true, getLineColor: [40, 160, 80, 255],
-        lineWidthUnits: 'pixels', getLineWidth: 1.4,
-        parameters: { depthTest: false },
-        updateTriggers: { getPosition: [fillCursor] },
-      }));
-    }
-    // Placed-vertex dots — first vertex is yellow and grows when in close range.
-    layers.push(new ScatterplotLayer({
-      id: 'fill-poly-verts', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-      data: fillPolygon.map((p, i) => ({ position: [p[0], p[1], z + 0.04], i })),
-      getPosition: (d) => d.position,
-      getRadius: (d) => d.i === 0 ? (nearClose ? 2.2 : 1.4) : 0.9,
-      radiusUnits: 'meters',
-      filled: true,
-      getFillColor: (d) => d.i === 0 ? (nearClose ? [255, 220, 60, 255] : [255, 230, 80, 240]) : [40, 160, 80, 240],
-      stroked: true, getLineColor: [0, 0, 0, 200], getLineWidth: 1, lineWidthUnits: 'pixels',
-      parameters: { depthTest: false },
-      updateTriggers: { getRadius: [nearClose], getFillColor: [nearClose] },
-    }));
-  }
+  // In-progress polygon is rendered as a screen-space SVG overlay (see the
+  // JSX below). Drawing it inside deck.gl as world-space layers introduced
+  // a tiny but visible parallax offset on tilted views (verts sat at
+  // surfaceZ + 0.06m, projecting to a slightly different pixel than the
+  // click). The SVG overlay reprojects each world vertex via vp.project on
+  // every frame, so the dots land exactly under the cursor.
   if (propsItems.length > 0) {
     // Split props by orientation: most face the camera (billboard:true) but
     // floor tiles lay flat on the ground (billboard:false), so they need
@@ -2292,6 +2220,64 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 : isDragging ? 'grabbing'
                 : isHovering ? 'pointer' : 'default'}
               layers={layers} />
+
+      {/* In-progress polygon overlay (screen-space SVG). Vertices are world
+          coords; we reproject them every render so they stay glued to the
+          ground under the cursor regardless of camera tilt / zoom. */}
+      {fillPolygon.length > 0 && (() => {
+        const screenVerts = fillPolygon.map(([x, y]) => projectToScreen(x, y)).filter(Boolean);
+        if (screenVerts.length === 0) return null;
+        const cursorScreen = (fillMode === 'drawing' && fillCursor) ? projectToScreen(fillCursor[0], fillCursor[1]) : null;
+        const previewVerts = cursorScreen && screenVerts.length >= 1
+          ? [...screenVerts, cursorScreen]
+          : screenVerts;
+        const CLOSE_PX = 14;
+        const firstScreen = screenVerts[0];
+        const nearClose = cursorScreen && screenVerts.length >= 3
+          ? Math.hypot(cursorScreen[0] - firstScreen[0], cursorScreen[1] - firstScreen[1]) <= CLOSE_PX
+          : false;
+        const polyD = previewVerts.length >= 3
+          ? `M${previewVerts.map(([x, y]) => `${x},${y}`).join(' L')} Z`
+          : '';
+        const outlineD = `M${screenVerts.map(([x, y]) => `${x},${y}`).join(' L')}`
+          + (screenVerts.length >= 3 ? ` L${firstScreen[0]},${firstScreen[1]}` : '');
+        return (
+          <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%',
+                        pointerEvents: 'none', zIndex: 4 }}>
+            {polyD && <path d={polyD} fill="rgba(60,200,110,0.22)" stroke="none" />}
+            {/* Solid placed outline */}
+            <path d={outlineD} fill="none" stroke="#28a050" strokeWidth="2.2"
+                  strokeLinecap="round" strokeLinejoin="round" />
+            {/* Rubber-band: last placed vertex → cursor */}
+            {cursorScreen && (
+              <line x1={screenVerts[screenVerts.length - 1][0]} y1={screenVerts[screenVerts.length - 1][1]}
+                    x2={cursorScreen[0]} y2={cursorScreen[1]}
+                    stroke="#28a050" strokeWidth="2" strokeDasharray="4 3"
+                    strokeLinecap="round" opacity="0.9" />
+            )}
+            {/* Close-loop preview: cursor → first vertex when ≥3 verts */}
+            {cursorScreen && screenVerts.length >= 3 && (
+              <line x1={cursorScreen[0]} y1={cursorScreen[1]}
+                    x2={firstScreen[0]} y2={firstScreen[1]}
+                    stroke={nearClose ? '#ffc83c' : '#28a050'}
+                    strokeWidth={nearClose ? 2.4 : 1.4}
+                    strokeDasharray="3 3" opacity={nearClose ? 0.95 : 0.6} />
+            )}
+            {/* Vertex dots — first is yellow (closing target), rest are green */}
+            {screenVerts.map(([x, y], i) => (
+              <circle key={i} cx={x} cy={y}
+                      r={i === 0 ? (nearClose ? 7.5 : 5.5) : 4}
+                      fill={i === 0 ? (nearClose ? '#ffdc3c' : '#ffe65a') : '#28a050'}
+                      stroke="#000" strokeOpacity="0.7" strokeWidth="1" />
+            ))}
+            {/* Cursor preview dot */}
+            {cursorScreen && (
+              <circle cx={cursorScreen[0]} cy={cursorScreen[1]} r="3.5"
+                      fill="#ffffff" stroke="#28a050" strokeWidth="1.4" />
+            )}
+          </svg>
+        );
+      })()}
 
       {/* Live box-select rectangle. Position absolute over the canvas. */}
       {boxRect && (

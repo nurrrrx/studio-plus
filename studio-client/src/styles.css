@@ -83,7 +83,10 @@ body { font-family: var(--sans); color: var(--ink); background: var(--paper); }
   padding: 5px 9px; border-radius: 5px; border: 1px solid var(--line);
 }
 
-.svgwrap { width: 100%; height: 100%; background: #ffffff; cursor: grab; }
+/* position:relative so the screen-space overlays (in-progress polygon SVG,
+   box-select rectangle, bulk-action bar) anchor to the canvas, not the
+   viewport. */
+.svgwrap { position: relative; width: 100%; height: 100%; background: #ffffff; cursor: grab; }
 .svgwrap:active { cursor: grabbing; }
 
 .loading {
