@@ -487,47 +487,52 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // through the swap.
   const wasDrawingRef = useRef(false);
   const savedOrbitRef = useRef(null);
+  // Pull a 3-tuple target out of a viewState whose target may be 2D
+  // (OrthographicView) or 3D (OrbitView). Falls back to zeros so we
+  // never deref undefined when the views swap.
+  const targetXYZ = (vs, fallbackZ = 0) => {
+    const t = vs?.target;
+    if (Array.isArray(t)) return [t[0] ?? 0, t[1] ?? 0, t[2] ?? fallbackZ];
+    return [0, 0, fallbackZ];
+  };
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
     const w = wrap.clientWidth, h = wrap.clientHeight;
     if (!w || !h) return;
-    if (isDrawing && !wasDrawingRef.current) {
-      // Entering drawing: keep the SAME target XY (where the orbit was
-      // looking) and compute the ortho zoom that yields the same visible
-      // world width as the orbit view at the target's height. Measure the
-      // orbit's visible width by unprojecting the horizontal screen edges
-      // back to the target's z plane.
-      try {
+    try {
+      if (isDrawing && !wasDrawingRef.current) {
+        // Entering drawing: measure orbit's visible world width, compute
+        // the matching ortho zoom, save the prior orbit zoom for restore.
         const orbitVp = view.makeViewport({ width: w, height: h, viewState });
-        const tz = (viewState.target && viewState.target[2]) || 0;
+        const [, , tz] = targetXYZ(viewState);
         const left  = orbitVp.unproject([0, h / 2], { targetZ: tz });
         const right = orbitVp.unproject([w, h / 2], { targetZ: tz });
         const visibleWorldWidth = Math.hypot(right[0] - left[0], right[1] - left[1]);
-        if (visibleWorldWidth > 0) {
-          // OrthographicView: world_per_px = 1 / 2^zoom; so visible width
-          // in world units = canvas_width_in_px / 2^zoom.
+        if (isFinite(visibleWorldWidth) && visibleWorldWidth > 0) {
           const orthoZoom = Math.log2(w / visibleWorldWidth);
-          savedOrbitRef.current = { zoom: viewState.zoom, target: viewState.target };
-          setViewState((vs) => ({
-            ...vs,
-            zoom: orthoZoom,
-            target: [vs.target[0], vs.target[1], 0],
-          }));
+          if (isFinite(orthoZoom)) {
+            savedOrbitRef.current = { zoom: viewState.zoom, target: targetXYZ(viewState) };
+            setViewState((vs) => {
+              const [tx, ty] = targetXYZ(vs);
+              return { ...vs, zoom: orthoZoom, target: [tx, ty, 0] };
+            });
+          }
         }
-      } catch { /* fall through — leave viewState alone */ }
-    } else if (!isDrawing && wasDrawingRef.current) {
-      // Exiting drawing: restore the saved orbit zoom + target z. Keep the
-      // panned-to XY so the camera returns to wherever the user moved to.
-      if (savedOrbitRef.current) {
-        const { zoom, target } = savedOrbitRef.current;
+      } else if (!isDrawing && wasDrawingRef.current) {
+        // Exiting drawing: restore the orbit zoom + target z. Keep the
+        // panned-to XY so the camera returns where the user moved to.
+        const saved = savedOrbitRef.current;
         savedOrbitRef.current = null;
-        setViewState((vs) => ({
-          ...vs,
-          zoom,
-          target: [vs.target[0], vs.target[1], target[2] ?? 0],
-        }));
+        setViewState((vs) => {
+          const [tx, ty] = targetXYZ(vs);
+          const tz = saved?.target?.[2] ?? 0;
+          const z = saved?.zoom ?? vs.zoom;
+          return { ...vs, zoom: z, target: [tx, ty, tz] };
+        });
       }
+    } catch (e) {
+      console.warn('view-swap zoom conversion failed', e);
     }
     wasDrawingRef.current = isDrawing;
   }, [isDrawing]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2154,14 +2159,24 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               }}
               effects={[flatLighting]}
               viewState={viewState}
-              onViewStateChange={({ viewState: vs }) => setViewState((cur) => ({
-                ...cur, ...vs,
-                // OrthographicView's viewState doesn't carry rotation — keep
-                // whatever was last in cur so we restore the same camera when
-                // we swap back to OrbitView after drawing.
-                rotationX: clampX(vs.rotationX ?? cur.rotationX ?? 55),
-                rotationOrbit: vs.rotationOrbit ?? cur.rotationOrbit ?? 0,
-              }))}
+              onViewStateChange={({ viewState: vs }) => setViewState((cur) => {
+                // OrthographicView's viewState can hand back a 2-tuple
+                // target; the OrbitView path expects 3-tuple. Normalise so
+                // downstream reads of target[2] don't blow up after the
+                // view swap.
+                const ct = Array.isArray(cur.target) ? cur.target : [];
+                const vt = Array.isArray(vs.target) ? vs.target : [];
+                const target = [
+                  vt[0] ?? ct[0] ?? 0,
+                  vt[1] ?? ct[1] ?? 0,
+                  vt[2] ?? ct[2] ?? 0,
+                ];
+                return {
+                  ...cur, ...vs, target,
+                  rotationX: clampX(vs.rotationX ?? cur.rotationX ?? 55),
+                  rotationOrbit: vs.rotationOrbit ?? cur.rotationOrbit ?? 0,
+                };
+              })}
               onInteractionStateChange={(s) => setInteracting(!!(s.isDragging || s.isPanning || s.isRotating || s.isZooming))}
               onHover={(info) => {
                 if (fillMode === 'drawing' || placeMode === 'bikelane') {
