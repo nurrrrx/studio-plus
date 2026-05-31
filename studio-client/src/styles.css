@@ -89,6 +89,16 @@ body { font-family: var(--sans); color: var(--ink); background: var(--paper); }
 .svgwrap { position: relative; width: 100%; height: 100%; background: #ffffff; cursor: grab; }
 .svgwrap:active { cursor: grabbing; }
 
+/* Hide the browser-default up/down spinner buttons on <input type="number">.
+   The slider columns are narrow and the spinners crop the value so it shows
+   as "26‧" or "26⌃". The slider already provides + / − HoldButtons. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
 .loading {
   display: flex; align-items: center; justify-content: center;
   height: 100%; color: var(--muted); font-size: 14px;
