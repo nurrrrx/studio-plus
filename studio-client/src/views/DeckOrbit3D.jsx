@@ -300,10 +300,12 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     waitSec: 2,
   });
   const flyAbortRef = useRef(null);   // call to cancel an active tour
-  // Refs that mirror state so the animation can read the latest values
-  // without going through React's commit cycle.
-  const viewStateRef = useRef(viewState);
-  useEffect(() => { viewStateRef.current = viewState; }, [viewState]);
+  // Ref that mirrors viewState so the fly-through animation can read the
+  // latest camera without going through React's commit cycle. Starts as
+  // null and is filled on the first effect after viewState is created
+  // (viewState itself is declared further down — using useRef(viewState)
+  // here would TDZ on opening a project).
+  const viewStateRef = useRef(null);
   const [placeMode, setPlaceMode] = useState(null); // null or 'tree'|'person'|'lamp'|'car'|'table'
   const [deleteMode, setDeleteMode] = useState(false); // toggle: click any prop to remove
   const [moveMode, setMoveMode] = useState(false);     // toggle: click prop to pick up, click anywhere to drop
@@ -1016,6 +1018,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     target: [0, 0, targetZ], rotationOrbit: 30, rotationX: 55, zoom: -1.2,
   }), [targetZ]);
   const [viewState, setViewState] = useState(homeView);
+  // Keep the ref declared higher up (used by the fly-through tour) in
+  // sync with the latest viewState. Declared up there so the runner
+  // closure can read it without TDZ on first mount.
+  useEffect(() => { viewStateRef.current = viewState; }, [viewState]);
   const resetCamera = () => setViewState({ ...homeView });
 
   // Unproject the click pixel to the current surface plane (z = surfaceZ).
