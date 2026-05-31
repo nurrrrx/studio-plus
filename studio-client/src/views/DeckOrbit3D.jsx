@@ -64,10 +64,24 @@ const makeCanopySvg = (poly) =>
     canopyDetailsSvg +
   '</svg>';
 const CANOPY_SVGS = CANOPY_POLYGONS.map(makeCanopySvg);
-const CANOPY_URLS = CANOPY_SVGS.map((s) => `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(s) : ''}`);
+// Some browsers (latest Chrome / Safari) refuse to decode SVG <img> sources
+// that lack explicit pixel dimensions, even if they have a viewBox. The
+// failure shows up as `createImageBitmap` rejecting with 'image element
+// contains an SVG image without natural dimensions' the first time deck.gl
+// tries to atlas the IconLayer, after which deck.gl retries every frame
+// and floods the console with NaN-attribute warnings. Inject width/height
+// from the viewBox before we encode the data URL.
+const withNaturalDims = (svg) => {
+  if (typeof svg !== 'string') return svg;
+  if (/<svg[^>]*\swidth=/.test(svg) && /<svg[^>]*\sheight=/.test(svg)) return svg;
+  const m = svg.match(/viewBox="\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)\s*"/);
+  if (!m) return svg;
+  return svg.replace(/<svg(\b[^>]*)>/, `<svg$1 width="${m[1]}" height="${m[2]}">`);
+};
+const CANOPY_URLS = CANOPY_SVGS.map((s) => `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(withNaturalDims(s)) : ''}`);
 PROP_SVGS.canopy = CANOPY_SVGS[0]; // for any downstream uses
 const PROP_URLS = Object.fromEntries(
-  Object.entries(PROP_SVGS).map(([k, v]) => [k, `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(v) : ''}`])
+  Object.entries(PROP_SVGS).map(([k, v]) => [k, `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(withNaturalDims(v)) : ''}`])
 );
 PROP_URLS.canopy = CANOPY_URLS[0]; // default canopy = variant 0 (palette button)
 
@@ -81,7 +95,7 @@ const tintSvg = (svg, color) =>
     .replace(/fill="white"/gi, `fill="${color}"`)
     .replace(/fill="#ffffff"/gi, `fill="${color}"`)
     .replace(/fill="#fff"/gi, `fill="${color}"`);
-const svgToUrl = (svg) => `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(svg) : ''}`;
+const svgToUrl = (svg) => `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(withNaturalDims(svg)) : ''}`;
 const PROP_META = {
   tree:   { label: 'Tree',         icon: PROP_URLS.tree,   w: 64, h: 96, anchorY: 96, size: 8, defaultColor: '#38571a' },
   // Wider canopy variants drawn on a 110×96 viewBox. Anchor at the trunk's
