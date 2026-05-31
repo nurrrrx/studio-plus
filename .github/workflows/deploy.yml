@@ -17,12 +17,16 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: studio-client
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
+          cache-dependency-path: studio-client/package-lock.json
       - run: npm ci
       - name: Build
         env:
@@ -35,7 +39,7 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: studio-client/dist
 
   deploy:
     needs: build

@@ -1,32 +1,74 @@
 # studio+
 
-An axonometric / 3D massing study of Al Zeina (Abu Dhabi), built with React + Vite,
-Deck.gl and Three.js. Buildings and roads are hand-traced ground truth shipped as
-GeoJSON; the app renders them in a 2D plan view and an orbital 3D view.
+An axonometric / 3D massing study of **Al Zeina** (Abu Dhabi), built with
+React + Vite, deck.gl, and Three.js. Buildings and roads are hand-traced
+ground truth shipped as GeoJSON; the app renders them in a 2D plan view
+and an orbital 3D view, with per-project persistence on a small Express +
+Postgres backend.
 
-## Develop
+## Layout
 
-```bash
-npm install
-npm run dev      # http://localhost:5173
+```
+studio-plus/
+├── studio-client/      React + Vite SPA (GitHub Pages)
+└── studio-server/      Express + Postgres API (Railway)
 ```
 
-The dev server exposes `/api/settings` (GET/POST) that reads and writes
-`settings.json` at the project root — that's how view tweaks (zoom, rotation,
-title, layer toggles) are persisted between sessions while developing.
+Each folder has its own README with full details:
 
-## Build
+- [studio-client/](studio-client/README.md) — frontend, deploys to
+  https://nurrrrx.github.io/studio-plus/
+- [studio-server/](studio-server/README.md) — backend, deploys to Railway
+  project `studio+` (service `studio-plus-server`), sharing the existing
+  Postgres under a `studio_plus` schema
 
-```bash
-npm run build    # outputs dist/
-npm run preview  # serves dist/ locally
+## How the two halves connect
+
+```
+                    GitHub Actions (.github/workflows/deploy.yml)
+                          builds studio-client → GH Pages
+                                          │
+                                          ▼
+                          https://nurrrrx.github.io/studio-plus/
+                                          │
+                          fetch /api/auth, /api/projects/*
+                                          ▼
+              https://<studio-plus-server>.up.railway.app   (Express)
+                                          │
+                                          ▼
+                Railway Postgres → schema studio_plus.projects (JSONB)
 ```
 
-## Deployment
+- **Reads are public** (anyone can view the published site and load any
+  project's saved view).
+- **Writes require auth**: the splash on every load offers username /
+  password. Default creds (overridable via env): `kitty` / `stevens`.
+- **Guest mode** is allowed — the app stays usable, just can't persist.
 
-The site auto-deploys to GitHub Pages from `main` via
-`.github/workflows/deploy.yml`. The workflow builds with
-`VITE_BASE=/<repo-name>/` so asset URLs resolve under the project Pages path.
-There is no `/api/settings` server in production — `src/main.jsx` intercepts
-those calls and serves the static `public/settings.json` snapshot instead, so
-the published site loads with the saved view but ignores further edits.
+## Common tasks
+
+```bash
+# Push new client code → auto-deploys to GH Pages
+git push origin main
+
+# Re-deploy the server after editing studio-server/
+cd studio-server && railway up
+
+# Run both locally
+cd studio-client && npm run dev          # http://localhost:5173
+cd studio-server && npm run dev          # http://localhost:3000
+# In studio-client/.env.local: VITE_API_URL=http://localhost:3000
+```
+
+## Constraints worth knowing
+
+- **Don't regenerate the GeoJSON from OSM** — files in
+  `studio-client/public/data/` are hand-corrected ground truth.
+- **Per-feature metadata lives in GeoJSON properties**, not in side-config
+  files.
+- A previous experiment that rebuilt roads via medial-axis cleanup was
+  rejected as worse than the originals; don't retry.
+
+## Credits
+
+Developed by APSR.
