@@ -272,6 +272,19 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const [showGroundPlane, setShowGroundPlane] = useState(true); // surface plane in bgColor
   const [fillCutouts, setFillCutouts] = useState(true);  // hide cutout holes by painting surface colour
   const [propsItems, setPropsItems] = useState([]); // {id, type, position:[x,y,z]}
+  // Animation tick (ms timestamp) for prop-level animations — currently
+  // drives the burjeel wind effect. Throttled to ~20 fps via a rAF loop
+  // that only commits if at least 50 ms has passed since the last tick.
+  const [animTick, setAnimTick] = useState(0);
+  useEffect(() => {
+    let raf, last = 0;
+    const loop = (t) => {
+      if (t - last >= 50) { setAnimTick(t); last = t; }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
   const [placeMode, setPlaceMode] = useState(null); // null or 'tree'|'person'|'lamp'|'car'|'table'
   const [deleteMode, setDeleteMode] = useState(false); // toggle: click any prop to remove
   const [moveMode, setMoveMode] = useState(false);     // toggle: click prop to pick up, click anywhere to drop
@@ -1817,6 +1830,85 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       parameters: { depthTest: false },
     }));
   }
+
+  // Burjeel wind animation — concentric rings expanding outward from each
+  // burjeel tower's base, plus small inflow particles descending into the
+  // tower top. Visualises the wind-catcher function: air drawn in at the
+  // top, redirected to ground level and dispersed outward in all
+  // directions. Tied to animTick so the rings + particles march forward
+  // at ~20 fps regardless of camera state.
+  const burjeelItems = propsItems.filter((p) =>
+    p.type === 'burjeel' && Array.isArray(p.position) && isLayerVisible(p.layerId));
+  if (burjeelItems.length > 0) {
+    const RING_PHASES = [0, 0.25, 0.5, 0.75];   // 4 rings, staggered
+    const RING_PERIOD_S = 2.4;                   // seconds per full cycle
+    const RING_MAX_R   = 22;                     // metres at full expansion
+    const INFLOW_COUNT = 5;
+    const INFLOW_RISE  = 26;                     // metres above the tower top
+    const INFLOW_PERIOD_S = 1.8;
+    const t = animTick / 1000;
+    const rings = [];
+    const particles = [];
+    for (const b of burjeelItems) {
+      const lt = layerTransform(b.layerId);
+      const baseZ = (b.position[2] != null ? b.position[2] : surfaceZ) + layerExplodeOffset(b.layerId) + lt.dz;
+      const meta = PROP_META.burjeel || {};
+      const o = propSizes.burjeel || {};
+      const inst = b.instanceSize || {};
+      const towerH = inst.h ?? o.h ?? meta.size ?? 45;
+      const cx = b.position[0] + lt.dx, cy = b.position[1] + lt.dy;
+      // Ground rings (outflow): expanding circles at the base.
+      for (const ph of RING_PHASES) {
+        const phase = ((t / RING_PERIOD_S) + ph) % 1;
+        const radius = phase * RING_MAX_R;
+        const alpha = Math.round(Math.max(0, (1 - phase)) * 180);
+        rings.push({ x: cx, y: cy, z: baseZ + 0.05, radius, alpha });
+      }
+      // Inflow particles: descend toward the tower top in a small ring
+      // pattern so they look like air being drawn down into the cap.
+      for (let i = 0; i < INFLOW_COUNT; i++) {
+        const phase = ((t / INFLOW_PERIOD_S) + i / INFLOW_COUNT) % 1;
+        const angle = (i / INFLOW_COUNT) * Math.PI * 2 + t * 0.6;
+        const r = 1.5 + (1 - phase) * 1.5;
+        const z = baseZ + towerH + INFLOW_RISE * (1 - phase);
+        // peak alpha around mid-fall, fade at start/end
+        const alpha = Math.round(Math.max(0, 1 - Math.abs(phase - 0.5) * 2) * 230);
+        particles.push({
+          x: cx + Math.cos(angle) * r,
+          y: cy + Math.sin(angle) * r,
+          z, alpha,
+        });
+      }
+    }
+    if (rings.length) {
+      layers.push(new ScatterplotLayer({
+        id: 'burjeel-wind-rings', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: rings,
+        getPosition: (d) => [d.x, d.y, d.z],
+        getRadius: (d) => d.radius,
+        radiusUnits: 'meters',
+        filled: false, stroked: true,
+        getLineColor: (d) => [120, 180, 220, d.alpha],
+        lineWidthUnits: 'pixels', getLineWidth: 2,
+        parameters: { depthTest: false, depthMask: false },
+        updateTriggers: { getRadius: [animTick], getLineColor: [animTick], getPosition: [animTick] },
+      }));
+    }
+    if (particles.length) {
+      layers.push(new ScatterplotLayer({
+        id: 'burjeel-wind-inflow', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: particles,
+        getPosition: (d) => [d.x, d.y, d.z],
+        getRadius: 0.6,
+        radiusUnits: 'meters',
+        filled: true, stroked: false,
+        getFillColor: (d) => [170, 200, 235, d.alpha],
+        parameters: { depthTest: false, depthMask: false },
+        updateTriggers: { getPosition: [animTick], getFillColor: [animTick] },
+      }));
+    }
+  }
+
   // Flat props (floor tiles) are inserted here — BEFORE roads and buildings —
   // so the road and building draw calls come later and visually cover any
   // tile portion that extends onto them, even in top-down camera angles where
