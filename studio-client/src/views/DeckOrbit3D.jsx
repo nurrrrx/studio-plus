@@ -1616,18 +1616,28 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const centroid = [h.centroid[0] + t.dx, h.centroid[1] + t.dy];
       // Layer's own picked colour wins; otherwise rotate through the palette.
       const color = layer?.color ? hexRgb(layer.color) : PALETTE[idx % PALETTE.length];
-      return { ...h, idx, z, color, polygon, centroid };
+      // Per-layer alpha (0..1) controls slab fill transparency. Default
+      // 0.5 keeps the existing translucent look; setting it to 0 makes
+      // that layer's slab effectively invisible (outline only).
+      const alpha01 = typeof layer?.alpha === 'number' ? Math.max(0, Math.min(1, layer.alpha)) : 0.5;
+      return { ...h, idx, z, color, polygon, centroid, alpha01 };
     });
     const slabLayer = new PolygonLayer({
       id: 'layer-slabs', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
       data: slabs,
       getPolygon: (d) => d.polygon.map(([x, y]) => [x, y, d.z]),
       extruded: false, filled: true, stroked: true,
-      getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 130],
-      getLineColor: (d) => [d.color[0], d.color[1], d.color[2], 240],
+      getFillColor: (d) => [d.color[0], d.color[1], d.color[2], Math.round(d.alpha01 * 255)],
+      // Outline stays mostly opaque so the slab boundary remains readable
+      // even when the user dials the fill alpha to near-zero. Scaled
+      // gently with alpha so a 0% layer disappears entirely.
+      getLineColor: (d) => [d.color[0], d.color[1], d.color[2], Math.max(60, Math.round(d.alpha01 * 240))],
       lineWidthUnits: 'pixels', getLineWidth: 2.4,
       parameters: { depthTest: false, depthMask: false },
-      updateTriggers: { getPolygon: [surfaceZ, layerExplodeGap, layersExploded] },
+      updateTriggers: {
+        getPolygon: [surfaceZ, layerExplodeGap, layersExploded],
+        getFillColor: [propLayers], getLineColor: [propLayers],
+      },
     });
     if (layersInFront) {
       // Defer to end of layers[] so buildings can't paint over.
@@ -3250,12 +3260,19 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                         ↻
                       </button>
                     ) : null}
-                    <span style={{ marginLeft: 'auto' }} title="layer slab + label colour">
-                      <input type="color"
-                             value={l.color || ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8]}
-                             onChange={(e) => updateLayer({ color: e.target.value })}
-                             style={{ width: 22, height: 16, border: '1px solid var(--line)',
-                                      borderRadius: 3, padding: 0, cursor: 'pointer' }} />
+                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <span title="layer slab + label colour">
+                        <input type="color"
+                               value={l.color || ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8]}
+                               onChange={(e) => updateLayer({ color: e.target.value })}
+                               style={{ width: 22, height: 16, border: '1px solid var(--line)',
+                                        borderRadius: 3, padding: 0, cursor: 'pointer' }} />
+                      </span>
+                      <input type="range" min={0} max={1} step={0.05}
+                             value={typeof l.alpha === 'number' ? l.alpha : 0.5}
+                             onChange={(e) => updateLayer({ alpha: Number(e.target.value) })}
+                             title={`slab transparency (${Math.round((typeof l.alpha === 'number' ? l.alpha : 0.5) * 100)}%)`}
+                             style={{ width: 50, height: 14, accentColor: l.color || '#7a7468' }} />
                     </span>
                   </div>
                   </div>
