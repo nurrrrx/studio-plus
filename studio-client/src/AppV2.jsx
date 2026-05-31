@@ -217,7 +217,8 @@ function ProjectViewPage({ projectId, onSignOut }) {
                            onFreeOrbitChange={setFreeOrbit}
                            customizationTarget={open ? customizationTarget : null}
                            tourTarget={open ? tourTarget : null}
-                           controlsTarget={rightOpen ? controlsTarget : null} />
+                           controlsTarget={rightOpen ? controlsTarget : null}
+                           headerActionsTarget={headerActionsTarget} />
             </div>
           )}
         </main>

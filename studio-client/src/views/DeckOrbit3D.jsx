@@ -2393,13 +2393,27 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // makes them ignore the z-buffer so even when the centroid is below a
   // tall building the text still reads.
   if (layerLabelData && layerLabelData.length) {
+    // Screen-left direction in world XY for the current camera bearing.
+    // bearing=0 → camera looks north, viewer's left is west (-X);
+    // each +90° of bearing rotates the left vector through the slab's
+    // next clockwise corner from the viewer's perspective.
+    const bRad = ((viewState.rotationOrbit || 0) * Math.PI) / 180;
+    const lx = -Math.cos(bRad), ly = -Math.sin(bRad);
     layers.push(new TextLayer({
       id: 'layer-labels', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
       data: layerLabelData,
-      // Anchor at the leftmost edge of each slab; the label grows
-      // leftward from that point (getTextAnchor:'end') so the name
-      // hangs off the left side of every layer.
-      getPosition: (d) => [d.leftAnchor[0], d.leftAnchor[1], d.z + Math.max(3, layerExplodeGap * 0.4)],
+      // Pick the polygon vertex projecting furthest along screen-left.
+      // As the camera orbits, the anchor walks around the slab so the
+      // label always sits on the visual left side from the viewer.
+      getPosition: (d) => {
+        let bestX = d.centroid[0], bestY = d.centroid[1];
+        let bestDot = -Infinity;
+        for (const [px, py] of d.polygon) {
+          const dot = px * lx + py * ly;
+          if (dot > bestDot) { bestDot = dot; bestX = px; bestY = py; }
+        }
+        return [bestX, bestY, d.z + Math.max(3, layerExplodeGap * 0.4)];
+      },
       getText: (d) => d.name,
       getSize: 13, getColor: [0, 0, 0, 255],
       getTextAnchor: 'end', getAlignmentBaseline: 'center',
@@ -2408,6 +2422,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       billboard: true,
       fontSettings: { sdf: true },
       outlineColor: [255, 255, 255, 240], outlineWidth: 4,
+      updateTriggers: {
+        getPosition: [viewState.rotationOrbit, layerExplodeGap],
+      },
       parameters: { depthTest: false, depthMask: false },
     }));
   }
