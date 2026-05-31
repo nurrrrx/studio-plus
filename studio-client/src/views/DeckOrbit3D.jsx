@@ -264,6 +264,17 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // inline editor with position / size / layer / colour. Esc deselects.
   const [selectMode, setSelectMode] = useState(false);
   const [selectedPropId, setSelectedPropId] = useState(null);
+  // Multi-selection set. Includes selectedPropId when it's set; can also hold
+  // additional ids picked via Cmd/Ctrl/Shift+click or via box-select drag.
+  // Used purely for highlight + bulk delete; the single-item editor still
+  // keys off selectedPropId.
+  const [selectedPropIds, setSelectedPropIds] = useState([]);
+  // Box-select sub-mode: when on, dragging in empty space paints a screen
+  // rectangle and on release every prop whose projected position falls inside
+  // gets added to the selection. Disables deck.gl drag-pan/drag-rotate while
+  // active so the drag goes to us instead.
+  const [boxSelect, setBoxSelect] = useState(false);
+  const [boxRect, setBoxRect] = useState(null); // {x0,y0,x1,y1} in canvas px, or null
   const flashRejection = (msg) => {
     setRejectionMsg(msg);
     if (rejectionTimerRef.current) clearTimeout(rejectionTimerRef.current);
@@ -453,6 +464,77 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     };
   }, []);
 
+  // Box-select drag: while boxSelect is on, mousedown anywhere in the canvas
+  // (other than on the box-select UI itself) starts a screen-space rectangle.
+  // On mouseup the rectangle is converted to a list of props whose projected
+  // world position falls inside it. Holding Shift at drag-start ADDS to the
+  // current multi-selection instead of replacing it.
+  useEffect(() => {
+    if (!boxSelect) return;
+    const el = wrapRef.current; if (!el) return;
+    let start = null;            // { x, y, additive }
+    const rectFrom = (a, b) => ({
+      x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y),
+      x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y),
+    });
+    const onDown = (e) => {
+      if (e.button !== 0) return;          // primary button only
+      const rect = el.getBoundingClientRect();
+      start = { x: e.clientX - rect.left, y: e.clientY - rect.top, additive: !!e.shiftKey };
+      setBoxRect({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
+      e.preventDefault();
+    };
+    const onMove = (e) => {
+      if (!start) return;
+      const rect = el.getBoundingClientRect();
+      const cur = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      setBoxRect(rectFrom(start, cur));
+    };
+    const onUp = (e) => {
+      if (!start) return;
+      const rect = el.getBoundingClientRect();
+      const cur = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const r = rectFrom(start, cur);
+      const additive = start.additive;
+      start = null; setBoxRect(null);
+      // Tiny drag → treat as a click-on-empty: clear selection.
+      if (r.x1 - r.x0 < 4 && r.y1 - r.y0 < 4) {
+        if (!additive) { setSelectedPropIds([]); setSelectedPropId(null); }
+        return;
+      }
+      const deck = deckRef.current?.deck;
+      const vp = deck?.getViewports?.()[0]; if (!vp) return;
+      const hit = [];
+      for (const p of propsItems) {
+        if (!isLayerVisible(p.layerId)) continue;
+        // Pick the prop's effective world position. Bikelanes/polygons have
+        // no single position[]; use the first vertex as a hit proxy.
+        let world;
+        if (Array.isArray(p.position)) world = p.position;
+        else if (Array.isArray(p.polygon) && p.polygon[0]) world = [p.polygon[0][0], p.polygon[0][1], surfaceZ];
+        else if (Array.isArray(p.path) && p.path[0]) world = [p.path[0][0], p.path[0][1], surfaceZ];
+        else continue;
+        let s;
+        try { s = vp.project(world); } catch { continue; }
+        if (s[0] >= r.x0 && s[0] <= r.x1 && s[1] >= r.y0 && s[1] <= r.y1) hit.push(p.id);
+      }
+      setSelectedPropIds((cur) => {
+        if (!additive) return hit;
+        const merged = new Set(cur); for (const id of hit) merged.add(id);
+        return [...merged];
+      });
+      if (hit.length === 1) setSelectedPropId(hit[0]);
+    };
+    el.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      el.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [boxSelect, propsItems, surfaceZ]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Safari pinch (gesture events): zoom toward cursor + rotate around vertical
   // axis on twist. Chrome doesn't fire these — pinches arrive as ctrlKey wheels
   // (handled above). One-finger drag still rotates freely via deck.gl.
@@ -541,7 +623,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // Escape cancels placement / delete / move / polygon-fill mode.
   // Enter closes a polygon being drawn (≥3 verts) and advances to config.
   useEffect(() => {
-    if (!placeMode && !deleteMode && !moveMode && !selectMode && !selectedPropId && fillMode === 'idle') return;
+    if (!placeMode && !deleteMode && !moveMode && !selectMode && !selectedPropId && selectedPropIds.length === 0 && !boxSelect && !boxRect && fillMode === 'idle') return;
     const onKey = (e) => {
       if (e.target && e.target.tagName === 'INPUT') return; // don't hijack typing
       if (e.key === 'Escape') {
@@ -549,7 +631,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         if (deleteMode) setDeleteMode(false);
         if (moveMode) { setMoveMode(false); setMovingPropId(null); }
         if (selectMode) setSelectMode(false);
+        if (boxSelect) setBoxSelect(false);
         if (selectedPropId) setSelectedPropId(null);
+        if (selectedPropIds.length) setSelectedPropIds([]);
+        if (boxRect) setBoxRect(null);
         if (fillMode !== 'idle') { setFillMode('idle'); setFillPolygon([]); }
         if (bikeLanePath.length > 0) setBikeLanePath([]);
       } else if (e.key === 'Enter' && fillMode === 'drawing' && fillPolygon.length >= 3) {
@@ -580,7 +665,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [placeMode, deleteMode, moveMode, fillMode, fillPolygon, bikeLanePath, activeLayerId, selectMode, selectedPropId]);
+  }, [placeMode, deleteMode, moveMode, fillMode, fillPolygon, bikeLanePath, activeLayerId, selectMode, selectedPropId, selectedPropIds, boxSelect, boxRect]);
 
   // Per-prop z-offset when custom layers are exploded. Props with no layer
   // assignment stay grounded; layer i is lifted by (i+1) * gap.
@@ -1958,6 +2043,37 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         }));
       }
     }
+
+    // Multi-selection rings — one hollow blue circle around each prop in
+    // selectedPropIds. Single highlight (selectedPropId) is already drawn by
+    // the IconLayers via highlightedObjectIndex, so we only add rings here
+    // for the EXTRA selected items beyond the primary.
+    const ringIds = selectedPropIds.filter((id) => id !== selectedPropId);
+    if (ringIds.length) {
+      const ringItems = ringIds
+        .map((id) => propsItems.find((p) => p.id === id))
+        .filter(Boolean);
+      layers.push(new ScatterplotLayer({
+        id: 'multi-sel-rings', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: ringItems,
+        getPosition: (d) => {
+          // For point props use the placed coordinate; for polygon / path
+          // props use the first vertex as a hit proxy.
+          const z = surfaceZ + 0.05;
+          if (Array.isArray(d.position)) return [d.position[0], d.position[1], (d.position[2] ?? surfaceZ) + 0.05];
+          if (Array.isArray(d.polygon) && d.polygon[0]) return [d.polygon[0][0], d.polygon[0][1], z];
+          if (Array.isArray(d.path) && d.path[0]) return [d.path[0][0], d.path[0][1], z];
+          return [0, 0, z];
+        },
+        getRadius: 1.4,
+        radiusUnits: 'meters',
+        filled: false, stroked: true,
+        getLineColor: [76, 184, 220, 230],
+        lineWidthUnits: 'pixels', getLineWidth: 2.4,
+        parameters: { depthTest: false },
+        updateTriggers: { getPosition: [surfaceZ, propsItems] },
+      }));
+    }
   }
 
   const clampX = (x) => Math.max(0, Math.min(89, x));        // never go underground
@@ -1973,14 +2089,18 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
          style={{ cursor: placeMode ? 'crosshair'
                   : deleteMode ? 'not-allowed'
                   : moveMode ? (movingPropId ? 'crosshair' : 'pointer')
+                  : boxSelect ? 'crosshair'
                   : selectMode ? 'pointer'
                   : fillMode === 'drawing' ? 'crosshair'
                   : panMode ? 'grab' : 'default' }}>
       <DeckGL ref={deckRef} views={view}
               controller={{
                 scrollZoom: false,
-                dragRotate: !panMode,
-                dragPan: true,
+                // While box-select is active, the canvas drag belongs to us
+                // (paints the selection rectangle) — disable deck.gl's own
+                // drag handlers so they don't fight us.
+                dragRotate: !panMode && !boxSelect,
+                dragPan: !boxSelect,
                 // iPad / touch: two-finger pinch zooms, two-finger twist rotates.
                 // touchRotate is off in deck.gl's defaults; we explicitly enable it.
                 touchRotate: true,
@@ -2006,17 +2126,37 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                       || info.layer.id === 'bikelanes' || info.layer.id === 'poly-props' || info.layer.id === 'labels')
                   && info.object;
 
-                // Delete mode OR Cmd/Ctrl/Shift + click on a placed prop → remove it.
-                if ((deleteMode || mod) && isPropPick) {
+                // Delete shortcut: Delete mode OR Cmd/Ctrl/Shift + click on a
+                // placed prop → remove it. In select mode, the modifier is
+                // repurposed for multi-select (handled in the next block).
+                if (deleteMode && isPropPick) {
+                  setPropsItems((p) => p.filter((pp) => pp.id !== info.object.id));
+                  return;
+                }
+                if (!selectMode && mod && isPropPick) {
                   setPropsItems((p) => p.filter((pp) => pp.id !== info.object.id));
                   return;
                 }
 
-                // Select mode: click a prop to open its editor, click empty
-                // to deselect.
+                // Select mode: click a prop to open its editor; Cmd/Ctrl/
+                // Shift+click toggles the prop in the multi-selection set
+                // (without opening the single-item editor on toggle). Click
+                // empty space to deselect everything.
                 if (selectMode) {
-                  if (isPropPick) { setSelectedPropId(info.object.id); return; }
+                  if (mod && isPropPick) {
+                    const id = info.object.id;
+                    setSelectedPropIds((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+                    // Don't move the editor focus on a toggle; leave whatever
+                    // single-item the user already had open (if any).
+                    return;
+                  }
+                  if (isPropPick) {
+                    setSelectedPropId(info.object.id);
+                    setSelectedPropIds([info.object.id]);
+                    return;
+                  }
                   setSelectedPropId(null);
+                  setSelectedPropIds([]);
                   return;
                 }
 
@@ -2131,6 +2271,52 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 : isDragging ? 'grabbing'
                 : isHovering ? 'pointer' : 'default'}
               layers={layers} />
+
+      {/* Live box-select rectangle. Position absolute over the canvas. */}
+      {boxRect && (
+        <div style={{
+          position: 'absolute',
+          left: boxRect.x0, top: boxRect.y0,
+          width: boxRect.x1 - boxRect.x0, height: boxRect.y1 - boxRect.y0,
+          border: '1.5px dashed #4cb8dc',
+          background: 'rgba(76, 184, 220, 0.10)',
+          pointerEvents: 'none',
+          zIndex: 5,
+        }} />
+      )}
+
+      {/* Bulk-action bar — appears when more than one prop is selected. */}
+      {selectedPropIds.length > 1 && (
+        <div style={{
+          position: 'absolute', left: '50%', bottom: 24, transform: 'translateX(-50%)',
+          display: 'flex', alignItems: 'center', gap: 10,
+          background: 'rgba(20, 28, 48, 0.95)', color: '#e6efff',
+          border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6,
+          padding: '7px 12px', fontSize: 12, zIndex: 6,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+        }}>
+          <span style={{ fontWeight: 600 }}>{selectedPropIds.length} props selected</span>
+          <button onClick={() => {
+                    const ids = new Set(selectedPropIds);
+                    setPropsItems((items) => items.filter((pp) => !ids.has(pp.id)));
+                    setSelectedPropIds([]); setSelectedPropId(null);
+                  }}
+                  style={{
+                    background: '#b03030', color: '#fff', border: 'none',
+                    borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+                  }}>
+            Delete all
+          </button>
+          <button onClick={() => { setSelectedPropIds([]); setSelectedPropId(null); }}
+                  style={{
+                    background: 'transparent', color: '#cbd5e1',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+                  }}>
+            Clear
+          </button>
+        </div>
+      )}
 
       {selectedPropId && (() => {
         const p = propsItems.find((pp) => pp.id === selectedPropId);
@@ -2574,10 +2760,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             <button onClick={() => {
                       const next = !selectMode;
                       setSelectMode(next);
-                      if (!next) setSelectedPropId(null);
+                      if (!next) { setSelectedPropId(null); setSelectedPropIds([]); setBoxSelect(false); setBoxRect(null); }
                       setPlaceMode(null); setDeleteMode(false); setMoveMode(false); setMovingPropId(null);
                     }}
-                    title="toggle select mode — click a prop to edit its properties"
+                    title="toggle select mode — click to edit one prop; ⌘/Ctrl/Shift+click to add to selection"
                     style={{
                       display: 'flex', alignItems: 'center', gap: 5,
                       padding: '4px 8px', fontSize: 11, border: '1px solid var(--line)',
@@ -2589,8 +2775,28 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 <path fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
                       d="M2 2l5 12 2-5 5-2z"/>
               </svg>
-              {selectMode ? (selectedPropId ? 'Select — editing' : 'Select — click a prop') : 'Select mode'}
+              {selectMode ? (selectedPropIds.length > 1 ? `Select — ${selectedPropIds.length} props`
+                : (selectedPropId ? 'Select — editing' : 'Select — click a prop'))
+                : 'Select mode'}
             </button>
+            {/* Box-select sub-toggle: only useful while Select mode is on. */}
+            {selectMode && (
+              <button onClick={() => setBoxSelect((b) => !b)}
+                      title="drag a rectangle to select multiple props (Shift+drag to add)"
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 5,
+                        padding: '4px 8px', fontSize: 11, border: '1px solid var(--line)',
+                        borderRadius: 4,
+                        background: boxSelect ? '#1860a8' : '#fff',
+                        color: boxSelect ? '#fff' : '#3a342c', cursor: 'pointer',
+                      }}>
+                <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden>
+                  <rect x="2" y="2" width="12" height="12" fill="none"
+                        stroke="currentColor" strokeWidth="1.4" strokeDasharray="2 1.5" rx="1" />
+                </svg>
+                {boxSelect ? 'Box-select on' : 'Box select'}
+              </button>
+            )}
             <button onClick={() => { setMoveMode((m) => !m); setMovingPropId(null); setPlaceMode(null); setDeleteMode(false); setSelectMode(false); setSelectedPropId(null); }}
                     title="toggle move mode — click a prop to pick up, click anywhere to drop"
                     style={{
