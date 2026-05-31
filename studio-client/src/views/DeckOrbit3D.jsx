@@ -3284,7 +3284,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       {show('legend') && <Legend geo={geo} />}
       <ControlStack>
         {show('gizmo') && (
-          <Gizmo3D bearing={viewState.rotationOrbit} pitch={viewState.rotationX}
+          <Gizmo3D bearing={finite(viewState.rotationOrbit, 0)} pitch={finite(viewState.rotationX, 55)}
                    onSet={({ bearing, pitch }) => setViewState((v) => ({
                      ...v,
                      rotationOrbit: bearing != null ? bearing : v.rotationOrbit,
@@ -3324,8 +3324,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                onMouseDown={(e) => e.stopPropagation()}>
             {show('tilt') && (
               <div>
-                <CtrlLabel>Tilt {Math.round(viewState.rotationX)}°</CtrlLabel>
-                <TiltBar tilt={viewState.rotationX} onTilt={setPitch} min={0} max={89} />
+                <CtrlLabel>Tilt {Math.round(finite(viewState.rotationX, 55))}°</CtrlLabel>
+                <TiltBar tilt={finite(viewState.rotationX, 55)} onTilt={setPitch} min={0} max={89} />
               </div>
             )}
             {show('zoom') && (
@@ -3337,7 +3337,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             )}
           </div>
         )}
-        {show('compass') && <Compass bearing={viewState.rotationOrbit} onBearing={setBearing} />}
+        {show('compass') && <Compass bearing={finite(viewState.rotationOrbit, 0)} onBearing={setBearing} />}
       </ControlStack>
     </div>
   );
@@ -3348,8 +3348,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 // triangle tips and labels at the tips. Click an axis to align the view.
 function Gizmo3D({ bearing, pitch, onSet }) {
   const L = 26, HEAD = 6;
-  const p = (pitch * Math.PI) / 180;
-  const horiz = (az) => { const a = ((az - bearing) * Math.PI) / 180; return [Math.sin(a) * L, -Math.cos(a) * Math.cos(p) * L]; };
+  // Bake any non-finite input (NaN from a transient view-swap, undefined
+  // from a fresh OrthographicView's onViewStateChange) into a safe value
+  // before the trig — otherwise polygon `points` strings end up like
+  // "NaN,NaN ..." and the SVG attribute setter spam-rejects them.
+  const safe = (v, fb) => (typeof v === 'number' && isFinite(v) ? v : fb);
+  const pitchN = safe(pitch, 0), bearingN = safe(bearing, 0);
+  const p = (pitchN * Math.PI) / 180;
+  const horiz = (az) => { const a = ((az - bearingN) * Math.PI) / 180; return [Math.sin(a) * L, -Math.cos(a) * Math.cos(p) * L]; };
   const items = [
     { v: horiz(90),                       color: '#d04a3a', label: 'X', click: () => onSet({ bearing: 90 }) },
     { v: [0, -Math.sin(p) * L],           color: '#3a8f4a', label: 'Y', click: () => onSet({ pitch: 0 }) },
