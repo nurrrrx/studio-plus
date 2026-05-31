@@ -486,35 +486,47 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // width, and (c) apply it so the map stays visible at the same scale
   // through the swap.
   const wasDrawingRef = useRef(false);
-  const savedOrbitZoomRef = useRef(null);
+  const savedOrbitRef = useRef(null);
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
     const w = wrap.clientWidth, h = wrap.clientHeight;
     if (!w || !h) return;
-    const measureHalfWorld = (v) => {
-      try {
-        const vp = v.makeViewport({ width: w, height: h, viewState });
-        const c = vp.unproject([w / 2, h / 2], { targetZ: surfaceZ });
-        const e = vp.unproject([w, h / 2], { targetZ: surfaceZ });
-        const hx = e[0] - c[0], hy = e[1] - c[1];
-        return { halfWorld: Math.hypot(hx, hy), centerXY: [c[0], c[1]] };
-      } catch { return null; }
-    };
     if (isDrawing && !wasDrawingRef.current) {
-      // Entering drawing: measure current orbit extent, compute ortho zoom.
-      const m = measureHalfWorld(view);
-      if (m && m.halfWorld > 0) {
-        savedOrbitZoomRef.current = viewState.zoom;
-        const orthoZoom = Math.log2((w / 2) / m.halfWorld);
-        setViewState((vs) => ({ ...vs, zoom: orthoZoom, target: [m.centerXY[0], m.centerXY[1], vs.target?.[2] ?? 0] }));
-      }
+      // Entering drawing: keep the SAME target XY (where the orbit was
+      // looking) and compute the ortho zoom that yields the same visible
+      // world width as the orbit view at the target's height. Measure the
+      // orbit's visible width by unprojecting the horizontal screen edges
+      // back to the target's z plane.
+      try {
+        const orbitVp = view.makeViewport({ width: w, height: h, viewState });
+        const tz = (viewState.target && viewState.target[2]) || 0;
+        const left  = orbitVp.unproject([0, h / 2], { targetZ: tz });
+        const right = orbitVp.unproject([w, h / 2], { targetZ: tz });
+        const visibleWorldWidth = Math.hypot(right[0] - left[0], right[1] - left[1]);
+        if (visibleWorldWidth > 0) {
+          // OrthographicView: world_per_px = 1 / 2^zoom; so visible width
+          // in world units = canvas_width_in_px / 2^zoom.
+          const orthoZoom = Math.log2(w / visibleWorldWidth);
+          savedOrbitRef.current = { zoom: viewState.zoom, target: viewState.target };
+          setViewState((vs) => ({
+            ...vs,
+            zoom: orthoZoom,
+            target: [vs.target[0], vs.target[1], 0],
+          }));
+        }
+      } catch { /* fall through — leave viewState alone */ }
     } else if (!isDrawing && wasDrawingRef.current) {
-      // Exiting drawing: restore the saved orbit zoom. Target stays wherever
-      // the user panned to in ortho mode.
-      if (savedOrbitZoomRef.current != null) {
-        const z = savedOrbitZoomRef.current; savedOrbitZoomRef.current = null;
-        setViewState((vs) => ({ ...vs, zoom: z }));
+      // Exiting drawing: restore the saved orbit zoom + target z. Keep the
+      // panned-to XY so the camera returns to wherever the user moved to.
+      if (savedOrbitRef.current) {
+        const { zoom, target } = savedOrbitRef.current;
+        savedOrbitRef.current = null;
+        setViewState((vs) => ({
+          ...vs,
+          zoom,
+          target: [vs.target[0], vs.target[1], target[2] ?? 0],
+        }));
       }
     }
     wasDrawingRef.current = isDrawing;
