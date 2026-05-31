@@ -201,6 +201,11 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const [showFloors, setShowFloors] = useState(false);
   const [showAoiPlatform, setShowAoiPlatform] = useState(false);
   const [platformHeight, setPlatformHeight] = useState(1.5); // metres
+  // Z of the ground/platform surface — must be hoisted above the polygon-
+  // drawing useEffect (~line 394) which references it in its deps array.
+  // Moving it later puts it in the temporal dead zone during render and
+  // crashes the component in production builds.
+  const surfaceZ = showAoiPlatform ? platformHeight : 0;
   const [showGrid, setShowGrid] = useState(false);
   const [gridExtent, setGridExtent] = useState('full'); // 'full' | 'shape' | 'aoi'
   const [gridColor, setGridColor] = useState('#3c4655'); // grid line colour
@@ -1167,8 +1172,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       getFillColor: [244, 241, 234, 255], getElevation: 0.05,
     }));
   }
-  // surface = whichever z the grid + AOI platform top sit at
-  const surfaceZ = showAoiPlatform ? platformHeight : 0;
+  // surface = whichever z the grid + AOI platform top sit at (declared earlier).
   const bgRgb = hexRgb(bgColor);
   const platformFill = [
     Math.max(0, bgRgb[0] - 18),

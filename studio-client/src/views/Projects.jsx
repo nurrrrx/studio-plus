@@ -48,10 +48,14 @@ export default function Projects({ activeTitle, activeId, onOpen, onRename }) {
 
   const removeProject = async (p) => {
     if (!window.confirm(`Delete project "${p.name}"? This can't be undone.`)) return;
+    // Optimistic remove, then rollback on backend failure so the UI doesn't
+    // lie when the user's token expired between render and click.
     setProjects((ps) => ps.filter((x) => x.id !== p.id));
-    if (backendConfigured() && isAuthed()) {
-      try { await deleteProject(p.id); }
-      catch (e) { /* swallow; if it fails, a refresh will bring it back */ }
+    if (!(backendConfigured() && isAuthed())) return;
+    try { await deleteProject(p.id); }
+    catch (e) {
+      setProjects((ps) => ps.find((x) => x.id === p.id) ? ps : [...ps, p]);
+      window.alert(`Couldn't delete: ${e.message}`);
     }
   };
   // Only show the ✕ for projects we can actually delete: requires auth and
