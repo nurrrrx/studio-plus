@@ -273,13 +273,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const [fillCutouts, setFillCutouts] = useState(true);  // hide cutout holes by painting surface colour
   const [propsItems, setPropsItems] = useState([]); // {id, type, position:[x,y,z]}
   // Animation tick (ms timestamp) for prop-level animations — currently
-  // drives the burjeel wind effect. Throttled to ~20 fps via a rAF loop
-  // that only commits if at least 50 ms has passed since the last tick.
+  // drives the burjeel wind effect. Throttled to ~30 fps for smoothness
+  // without hammering React; the rendering itself is GPU-bound so the
+  // bottleneck is React's reconciliation of the layer props.
   const [animTick, setAnimTick] = useState(0);
   useEffect(() => {
     let raf, last = 0;
     const loop = (t) => {
-      if (t - last >= 50) { setAnimTick(t); last = t; }
+      if (t - last >= 33) { setAnimTick(t); last = t; }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -1831,23 +1832,33 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     }));
   }
 
-  // Burjeel wind animation — concentric rings expanding outward from each
-  // burjeel tower's base, plus small inflow particles descending into the
-  // tower top. Visualises the wind-catcher function: air drawn in at the
-  // top, redirected to ground level and dispersed outward in all
-  // directions. Tied to animTick so the rings + particles march forward
-  // at ~20 fps regardless of camera state.
+  // Burjeel wind animation. Each tower emits irregular, organic wave-
+  // fronts at ground level that expand outward to a large radius — not
+  // perfect circles. The radius is modulated by a sum of two sine
+  // harmonics whose phase advances with time, so each wave breathes and
+  // morphs as it grows (multi-dimensional harmonic perturbation per
+  // sample angle). A second flat fading layer (thicker low-alpha stroke)
+  // softens the edges so the waves read as gusts rather than rings.
+  // Inflow particles still descend into the tower cap.
   const burjeelItems = propsItems.filter((p) =>
     p.type === 'burjeel' && Array.isArray(p.position) && isLayerVisible(p.layerId));
   if (burjeelItems.length > 0) {
-    const RING_PHASES = [0, 0.25, 0.5, 0.75];   // 4 rings, staggered
-    const RING_PERIOD_S = 2.4;                   // seconds per full cycle
-    const RING_MAX_R   = 22;                     // metres at full expansion
-    const INFLOW_COUNT = 5;
-    const INFLOW_RISE  = 26;                     // metres above the tower top
+    // Six staggered wave-fronts so a new gust starts every ~0.8 s.
+    const WAVE_PHASES = [0, 0.166, 0.333, 0.5, 0.666, 0.833];
+    const WAVE_PERIOD_S = 5.2;   // slower for a smoother, gusty feel
+    const WAVE_MAX_R    = 110;   // metres — much bigger than before
+    const VERTS         = 48;    // smooth polyline around each wave
+    const INFLOW_COUNT  = 6;
+    const INFLOW_RISE   = 30;
     const INFLOW_PERIOD_S = 1.8;
     const t = animTick / 1000;
-    const rings = [];
+    // Small per-burjeel hash so neighbouring towers don't pulse in sync.
+    const hash = (s) => {
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return ((h >>> 0) / 0xffffffff);
+    };
+    const waves = [];
     const particles = [];
     for (const b of burjeelItems) {
       const lt = layerTransform(b.layerId);
@@ -1857,22 +1868,42 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const inst = b.instanceSize || {};
       const towerH = inst.h ?? o.h ?? meta.size ?? 45;
       const cx = b.position[0] + lt.dx, cy = b.position[1] + lt.dy;
-      // Ground rings (outflow): expanding circles at the base.
-      for (const ph of RING_PHASES) {
-        const phase = ((t / RING_PERIOD_S) + ph) % 1;
-        const radius = phase * RING_MAX_R;
-        const alpha = Math.round(Math.max(0, (1 - phase)) * 180);
-        rings.push({ x: cx, y: cy, z: baseZ + 0.05, radius, alpha });
+      const seed = hash(b.id || `${cx},${cy}`);
+      // Per-tower noise signature (different harmonics so two burjeels
+      // don't ripple identically).
+      const f1 = 3 + Math.floor(seed * 4);      // 3..6 lobes
+      const f2 = 5 + Math.floor(seed * 5);      // 5..9 lobes
+      for (let wi = 0; wi < WAVE_PHASES.length; wi++) {
+        const ph = WAVE_PHASES[wi];
+        const phase = ((t / WAVE_PERIOD_S) + ph + seed * 0.3) % 1;
+        // Ease-out: wave grows fast at first then slows, more wind-like.
+        const eased = Math.pow(phase, 0.62);
+        const baseR = eased * WAVE_MAX_R;
+        const alpha = Math.max(0, Math.pow(1 - phase, 1.4));
+        // Angular noise that evolves over time -> waves breathe / morph.
+        const ampOuter = 0.18 + (wi % 3) * 0.04;
+        const phShift = wi * 0.9 + seed * 6.28;
+        const path = [];
+        for (let i = 0; i <= VERTS; i++) {
+          const angle = ((i % VERTS) / VERTS) * Math.PI * 2;
+          const n = Math.sin(angle * f1 + phShift + t * 0.9)
+                  + 0.55 * Math.sin(angle * f2 - phShift * 1.3 + t * 1.4)
+                  + 0.30 * Math.cos(angle * (f1 + f2) + t * 0.5);
+          const r = Math.max(0.5, baseR * (1 + ampOuter * n));
+          path.push([cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, baseZ + 0.08]);
+        }
+        // Two passes: a fat soft halo (low alpha, thick) and a sharper
+        // stroke on top so the wave reads from far away too.
+        waves.push({ path, alpha: alpha * 0.30, width: 6.5, sharp: false });
+        waves.push({ path, alpha: alpha * 0.85, width: 2.2, sharp: true });
       }
-      // Inflow particles: descend toward the tower top in a small ring
-      // pattern so they look like air being drawn down into the cap.
+      // Inflow particles unchanged in concept, just slightly bigger.
       for (let i = 0; i < INFLOW_COUNT; i++) {
         const phase = ((t / INFLOW_PERIOD_S) + i / INFLOW_COUNT) % 1;
         const angle = (i / INFLOW_COUNT) * Math.PI * 2 + t * 0.6;
-        const r = 1.5 + (1 - phase) * 1.5;
+        const r = 1.6 + (1 - phase) * 1.6;
         const z = baseZ + towerH + INFLOW_RISE * (1 - phase);
-        // peak alpha around mid-fall, fade at start/end
-        const alpha = Math.round(Math.max(0, 1 - Math.abs(phase - 0.5) * 2) * 230);
+        const alpha = Math.round(Math.max(0, 1 - Math.abs(phase - 0.5) * 2) * 235);
         particles.push({
           x: cx + Math.cos(angle) * r,
           y: cy + Math.sin(angle) * r,
@@ -1880,18 +1911,16 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         });
       }
     }
-    if (rings.length) {
-      layers.push(new ScatterplotLayer({
-        id: 'burjeel-wind-rings', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        data: rings,
-        getPosition: (d) => [d.x, d.y, d.z],
-        getRadius: (d) => d.radius,
-        radiusUnits: 'meters',
-        filled: false, stroked: true,
-        getLineColor: (d) => [120, 180, 220, d.alpha],
-        lineWidthUnits: 'pixels', getLineWidth: 2,
+    if (waves.length) {
+      layers.push(new PathLayer({
+        id: 'burjeel-wind-waves', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        data: waves,
+        getPath: (d) => d.path,
+        getColor: (d) => [120, 180, 220, Math.round(d.alpha * 255)],
+        widthUnits: 'pixels', getWidth: (d) => d.width,
+        capRounded: true, jointRounded: true,
         parameters: { depthTest: false, depthMask: false },
-        updateTriggers: { getRadius: [animTick], getLineColor: [animTick], getPosition: [animTick] },
+        updateTriggers: { getPath: [animTick], getColor: [animTick], getWidth: [animTick] },
       }));
     }
     if (particles.length) {
@@ -1899,7 +1928,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         id: 'burjeel-wind-inflow', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         data: particles,
         getPosition: (d) => [d.x, d.y, d.z],
-        getRadius: 0.6,
+        getRadius: 0.7,
         radiusUnits: 'meters',
         filled: true, stroked: false,
         getFillColor: (d) => [170, 200, 235, d.alpha],
