@@ -1589,9 +1589,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       data: slabs,
       getPolygon: (d) => d.polygon.map(([x, y]) => [x, y, d.z]),
       extruded: false, filled: true, stroked: true,
-      getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 55],
-      getLineColor: (d) => [d.color[0], d.color[1], d.color[2], 230],
-      lineWidthUnits: 'pixels', getLineWidth: 1.6,
+      // Bumped fill alpha (was 55) and line weight so the slab clearly
+      // reads as the floor of each lifted layer — at 22% it was almost
+      // invisible under tree / billboard sprites, which made it look like
+      // only the bike-lane layer had a slab when in fact every layer did.
+      getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 110],
+      getLineColor: (d) => [d.color[0], d.color[1], d.color[2], 240],
+      lineWidthUnits: 'pixels', getLineWidth: 2.4,
       parameters: { depthTest: false },
       updateTriggers: { getPolygon: [surfaceZ, layerExplodeGap, layersExploded] },
     }));
