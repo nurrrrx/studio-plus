@@ -97,6 +97,24 @@ const tintSvg = (svg, color) =>
     .replace(/fill="#ffffff"/gi, `fill="${color}"`)
     .replace(/fill="#fff"/gi, `fill="${color}"`);
 const svgToUrl = (svg) => `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(withNaturalDims(svg)) : ''}`;
+
+// Camera-tour stages. Each id maps to phase logic baked into
+// runFlyThrough; the label / description / enabled / customDurationS
+// fields are user-editable from the Camera tour sidebar. customDurationS
+// = null means "derive from flyConfig" (e.g. waitSec, tiltSpeed).
+const DEFAULT_TOUR_STAGES = [
+  { id: 'init',        label: 'Setup',           description: 'Collapse layers, hide overlays, set optimal tilt + collapsed zoom', enabled: true, customDurationS: null },
+  { id: 'wait1',       label: 'Hold opening',    description: 'Pause on the starting pose', enabled: true, customDurationS: null },
+  { id: 'expand',      label: 'Expand layers',   description: 'Show layer slabs, ease to min tilt + expanded zoom', enabled: true, customDurationS: 1.8 },
+  { id: 'min_to_opt',  label: 'Tilt → optimal',  description: 'Lean from min to optimal tilt', enabled: true, customDurationS: null },
+  { id: 'hold_opt',    label: 'Hold optimal',    description: 'Pause at the optimal pose', enabled: true, customDurationS: null },
+  { id: 'opt_to_max',  label: 'Tilt → max',      description: 'Lean further to the maximum tilt', enabled: true, customDurationS: null },
+  { id: 'hold_max',    label: 'Hold max',        description: 'Pause at the max-tilt pose', enabled: true, customDurationS: null },
+  { id: 'hide_colors', label: 'Collapse colors', description: 'Hide layer polygons (and stack, if enabled)', enabled: true, customDurationS: null },
+  { id: 'max_to_opt',  label: 'Tilt back',       description: 'Restore the optimal pose, re-show layer colours', enabled: true, customDurationS: null },
+  { id: 'rotate_360',  label: 'Spin 360°',       description: 'Orbit a full revolution around the target', enabled: true, customDurationS: null },
+];
+
 const PROP_META = {
   tree:   { label: 'Tree',         icon: PROP_URLS.tree,   w: 64, h: 96, anchorY: 96, size: 8, defaultColor: '#38571a' },
   // Wider canopy variants drawn on a 110×96 viewBox. Anchor at the trunk's
@@ -312,6 +330,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     waitSec: 2,
   });
   const flyAbortRef = useRef(null);   // call to cancel an active tour
+  // Editable camera-tour stages — drives runFlyThrough. Each entry has
+  // an id (mapped to its hardcoded phase logic), a friendly label and
+  // description for the UI, an enabled flag, and an optional
+  // customDurationS override (null = derive duration from flyConfig).
+  const [tourStages, setTourStages] = useState(() => DEFAULT_TOUR_STAGES.map((s) => ({ ...s })));
+  const [tourStageDrag, setTourStageDrag] = useState(null);
+  const [tourStageDragOver, setTourStageDragOver] = useState(null);
   // Named camera bookmarks — Save view button stores {id, name, target,
   // rotationOrbit, rotationX, zoom}. Clicking a row in the Views panel
   // smoothly applies it; ✏ renames; × deletes. Round-trips through the
@@ -1371,7 +1396,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       numbersThrough, bldgFill, bldgLine, podiumFill, roadFill, roofWidth, edgeWidth, explodeGap,
       showTrees, fillCutouts, propsItems, propSizes, propColors, propAvoidIntersect, smartPlace,
       propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons, showLayerNames, layersInFront,
-      photoIncludeUi, flyConfig, savedViews, viewOverrides,
+      photoIncludeUi, flyConfig, tourStages, savedViews, viewOverrides,
       shape, size, basemapStyle,
       archBuildings, archRoads, archBasemap,
     },
@@ -1417,6 +1442,23 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     if (typeof s.showLayerNames === 'boolean') setShowLayerNames(s.showLayerNames);
     if (typeof s.layersInFront === 'boolean') setLayersInFront(s.layersInFront);
     if (s.flyConfig && typeof s.flyConfig === 'object') setFlyConfig((f) => ({ ...f, ...s.flyConfig }));
+    if (Array.isArray(s.tourStages) && s.tourStages.length > 0) {
+      // Merge persisted stages with defaults so adding new built-in
+      // stages later doesn't strand old saved configs.
+      const known = new Map(DEFAULT_TOUR_STAGES.map((d) => [d.id, d]));
+      const seen = new Set();
+      const merged = [];
+      for (const ps of s.tourStages) {
+        const def = known.get(ps.id);
+        if (!def || seen.has(ps.id)) continue;
+        seen.add(ps.id);
+        merged.push({ ...def, ...ps });
+      }
+      for (const d of DEFAULT_TOUR_STAGES) {
+        if (!seen.has(d.id)) merged.push({ ...d });
+      }
+      setTourStages(merged);
+    }
     if (Array.isArray(s.savedViews)) setSavedViews(s.savedViews);
     if (s.viewOverrides && typeof s.viewOverrides === 'object') setViewOverrides(s.viewOverrides);
     if (typeof s.photoIncludeUi === 'boolean') setPhotoIncludeUi(s.photoIncludeUi);
@@ -2525,40 +2567,48 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     const easeOut = (t) => 1 - (1 - t) * (1 - t);
     const easeInOut = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
     const tiltDuration = (a, b) => Math.max(200, Math.abs(b - a) / Math.max(1, cfg.tiltSpeed) * 1000);
-    const phases = [
-      { name: 'init', instant: true, onEnter: () => {
+    // Build the run-time phase list from the user-editable tourStages.
+    // Each enabled stage maps to one phase via PHASE_LOGIC; customDurationS
+    // wins over the default duration if provided.
+    const PHASE_LOGIC = {
+      init: { instant: true, onEnter: () => {
         setLayersExploded(false);
         setShowLayerPolygons(false);
         setShowLayerNames(false);
         setViewState((v) => ({ ...v, rotationX: clampX(cfg.optTilt), zoom: cfg.collapsedZoom }));
-      }},
-      { name: 'wait1', durationMs: wait },
-      { name: 'expand', durationMs: 1800, onEnter: () => {
-        setLayersExploded(true);
-        setShowLayerPolygons(true);
-        setShowLayerNames(true);
-      }, target: () => ({ rotationX: clampX(cfg.minTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
-      { name: 'min->opt', durationMs: tiltDuration(cfg.minTilt, cfg.optTilt),
-        target: () => ({ rotationX: clampX(cfg.optTilt) }), ease: easeInOut },
-      { name: 'hold_opt', durationMs: wait },
-      { name: 'opt->max', durationMs: tiltDuration(cfg.optTilt, cfg.maxTilt),
-        target: () => ({ rotationX: clampX(cfg.maxTilt) }), ease: easeInOut },
-      { name: 'hold_max', durationMs: wait },
-      { name: 'hide_colors', durationMs: wait, onEnter: () => {
-        setShowLayerPolygons(false);
-        setShowLayerNames(false);
-        if (cfg.collapseAtMaxTilt) setLayersExploded(false);
-      }},
-      { name: 'max->opt', durationMs: tiltDuration(cfg.maxTilt, cfg.optTilt), onEnter: () => {
-        setShowLayerPolygons(true);
-        setShowLayerNames(true);
-        if (cfg.collapseAtMaxTilt) setLayersExploded(true);
-      }, target: () => ({ rotationX: clampX(cfg.optTilt) }), ease: easeInOut },
-      { name: 'rotate_360', durationMs: Math.max(300, 360 / Math.max(1, cfg.rotSpeed) * 1000),
-        relTarget: (s) => ({ rotationOrbit: (Number.isFinite(s.rotationOrbit) ? s.rotationOrbit : 0) + 360 }),
-        ease: easeOut },
-      { name: 'done', instant: true, onEnter: () => { setFlyPlaying(false); } },
-    ];
+      } },
+      wait1:      { defaultDurationMs: wait },
+      expand:     { defaultDurationMs: 1800,
+                    onEnter: () => { setLayersExploded(true); setShowLayerPolygons(true); setShowLayerNames(true); },
+                    target: () => ({ rotationX: clampX(cfg.minTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
+      min_to_opt: { defaultDurationMs: tiltDuration(cfg.minTilt, cfg.optTilt),
+                    target: () => ({ rotationX: clampX(cfg.optTilt) }), ease: easeInOut },
+      hold_opt:   { defaultDurationMs: wait },
+      opt_to_max: { defaultDurationMs: tiltDuration(cfg.optTilt, cfg.maxTilt),
+                    target: () => ({ rotationX: clampX(cfg.maxTilt) }), ease: easeInOut },
+      hold_max:   { defaultDurationMs: wait },
+      hide_colors:{ defaultDurationMs: wait,
+                    onEnter: () => { setShowLayerPolygons(false); setShowLayerNames(false);
+                                     if (cfg.collapseAtMaxTilt) setLayersExploded(false); } },
+      max_to_opt: { defaultDurationMs: tiltDuration(cfg.maxTilt, cfg.optTilt),
+                    onEnter: () => { setShowLayerPolygons(true); setShowLayerNames(true);
+                                     if (cfg.collapseAtMaxTilt) setLayersExploded(true); },
+                    target: () => ({ rotationX: clampX(cfg.optTilt) }), ease: easeInOut },
+      rotate_360: { defaultDurationMs: Math.max(300, 360 / Math.max(1, cfg.rotSpeed) * 1000),
+                    relTarget: (s) => ({ rotationOrbit: (Number.isFinite(s.rotationOrbit) ? s.rotationOrbit : 0) + 360 }),
+                    ease: easeOut },
+    };
+    const phases = tourStages
+      .filter((s) => s.enabled !== false && PHASE_LOGIC[s.id])
+      .map((s) => {
+        const base = PHASE_LOGIC[s.id];
+        const durMs = (s.customDurationS != null && Number.isFinite(s.customDurationS))
+          ? Math.max(0, s.customDurationS * 1000)
+          : (base.defaultDurationMs ?? 0);
+        return { name: s.id, instant: !!base.instant, durationMs: durMs,
+                 onEnter: base.onEnter, target: base.target, relTarget: base.relTarget, ease: base.ease };
+      })
+      .concat([{ name: 'done', instant: true, onEnter: () => { setFlyPlaying(false); } }]);
     let i = 0, startMs = 0, fromVS = null, targetVS = null;
     const step = (now) => {
       if (cancelled) return;
@@ -4043,7 +4093,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             </summary>
             <CameraTourBody flyConfig={flyConfig} setFlyConfig={setFlyConfig}
                             flyPlaying={flyPlaying} flyAbortRef={flyAbortRef}
-                            runFlyThrough={runFlyThrough} />
+                            runFlyThrough={runFlyThrough}
+                            tourStages={tourStages} setTourStages={setTourStages}
+                            dragId={tourStageDrag} setDragId={setTourStageDrag}
+                            dragOverId={tourStageDragOver} setDragOverId={setTourStageDragOver} />
           </details>
         </LayersPanel>
       )}
@@ -4053,7 +4106,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       {tourTarget && createPortal(
         <CameraTourBody flyConfig={flyConfig} setFlyConfig={setFlyConfig}
                         flyPlaying={flyPlaying} flyAbortRef={flyAbortRef}
-                        runFlyThrough={runFlyThrough} />,
+                        runFlyThrough={runFlyThrough}
+                        tourStages={tourStages} setTourStages={setTourStages}
+                        dragId={tourStageDrag} setDragId={setTourStageDrag}
+                        dragOverId={tourStageDragOver} setDragOverId={setTourStageDragOver} />,
         tourTarget,
       )}
       {show('legend') && <Legend geo={geo} />}
@@ -4409,9 +4465,101 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 // Body of the Camera-tour controls. Shared between the inline <details>
 // (classic page) and the V2 left-sidebar portal mount so the JSX has
 // exactly one source of truth.
-function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runFlyThrough }) {
+function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runFlyThrough,
+                          tourStages, setTourStages,
+                          dragId, setDragId, dragOverId, setDragOverId }) {
+  const updateStage = (id, patch) => {
+    setTourStages?.((arr) => arr.map((s) => s.id === id ? { ...s, ...patch } : s));
+  };
   return (
     <div style={{ paddingTop: 6, display: 'flex', flexDirection: 'column' }}>
+      {Array.isArray(tourStages) && tourStages.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#6f685c',
+                        letterSpacing: 0.4, padding: '2px 0 4px' }}>
+            STAGES
+          </div>
+          <div style={{ border: '1px solid var(--line)', borderRadius: 3 }}>
+            {tourStages.map((s, i) => {
+              const isDragging = dragId === s.id;
+              const isDragOver = dragOverId === s.id && dragId && dragId !== s.id;
+              return (
+                <div key={s.id}
+                     onDragOver={(e) => {
+                       if (!dragId || dragId === s.id) return;
+                       e.preventDefault();
+                       try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+                       if (dragOverId !== s.id) setDragOverId?.(s.id);
+                     }}
+                     onDragLeave={() => { if (dragOverId === s.id) setDragOverId?.(null); }}
+                     onDrop={(e) => {
+                       e.preventDefault();
+                       const fromId = dragId;
+                       if (!fromId || fromId === s.id) return;
+                       setTourStages?.((arr) => {
+                         const from = arr.findIndex((x) => x.id === fromId);
+                         const to = arr.findIndex((x) => x.id === s.id);
+                         if (from < 0 || to < 0) return arr;
+                         const next = arr.slice();
+                         const [moved] = next.splice(from, 1);
+                         next.splice(to, 0, moved);
+                         return next;
+                       });
+                       setDragId?.(null); setDragOverId?.(null);
+                     }}
+                     style={{ display: 'flex', flexDirection: 'column',
+                              padding: '4px 6px 6px',
+                              borderTop: i === 0 ? 'none' : '1px solid var(--line)',
+                              opacity: (s.enabled === false ? 0.55 : 1) * (isDragging ? 0.45 : 1),
+                              boxShadow: isDragOver ? 'inset 0 2px 0 0 #4c8cdc' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span draggable
+                          onDragStart={(e) => {
+                            setDragId?.(s.id);
+                            try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', s.id); } catch (_) {}
+                          }}
+                          onDragEnd={() => { setDragId?.(null); setDragOverId?.(null); }}
+                          title="Drag to reorder"
+                          style={{ cursor: 'grab', color: '#bdb6a4', fontSize: 11, lineHeight: 1,
+                                   userSelect: 'none', padding: '0 4px',
+                                   display: 'inline-flex', alignItems: 'center',
+                                   touchAction: 'none' }}>
+                      ⋮⋮
+                    </span>
+                    <input type="checkbox" checked={s.enabled !== false}
+                           onChange={(e) => updateStage(s.id, { enabled: e.target.checked })}
+                           title={s.enabled === false ? 'Enable stage' : 'Disable stage'}
+                           style={{ margin: 0, cursor: 'pointer' }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: '#3a342c',
+                                   whiteSpace: 'nowrap', overflow: 'hidden',
+                                   textOverflow: 'ellipsis' }}
+                          title={s.description}>
+                      <b>{i + 1}.</b> {s.label || s.id}
+                    </span>
+                    <input type="number" step={0.1} min={0}
+                           value={s.customDurationS ?? ''}
+                           placeholder="auto"
+                           onChange={(e) => {
+                             const v = e.target.value === '' ? null : Number(e.target.value);
+                             updateStage(s.id, { customDurationS: Number.isFinite(v) ? v : null });
+                           }}
+                           title="Override duration in seconds (blank = auto from tour config)"
+                           style={{ width: 50, fontSize: 11, padding: '1px 4px',
+                                    textAlign: 'right',
+                                    border: '1px solid var(--line)', borderRadius: 3 }} />
+                    <span style={{ color: '#9a948a', fontSize: 10, width: 8,
+                                   textAlign: 'left' }}>s</span>
+                  </div>
+                  <div style={{ paddingLeft: 26, marginTop: 2, fontSize: 10.5,
+                                color: '#9a948a', lineHeight: 1.3 }}>
+                    {s.description}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {[
         ['Min tilt',          'minTilt',       0, 89,  1, '°'],
         ['Optimal tilt',      'optTilt',       0, 89,  1, '°'],

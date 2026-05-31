@@ -237,9 +237,45 @@ function ProjectViewPage({ projectId, onSignOut }) {
                            headerActionsTarget={headerActionsTarget} />
             </div>
           )}
+          <CreditsFooter />
         </main>
       </SidebarInset>
       <RightSidebar open={rightOpen} controlsRef={setControlsTarget} />
+    </div>
+  );
+}
+
+// ---------- Credits footer (collapsible) ------------------------------------
+// Tiny attribution strip beneath the canvas card. Light grey, no background,
+// can be hidden via the small caret. Persists the open/closed state in
+// localStorage so the user's choice survives reloads.
+function CreditsFooter() {
+  const KEY = 'studioplus-v2-credits-open';
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(KEY) !== '0'; } catch (_) { return true; }
+  });
+  const toggle = () => setOpen((o) => {
+    const next = !o;
+    try { localStorage.setItem(KEY, next ? '1' : '0'); } catch (_) {}
+    return next;
+  });
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center',
+                  gap: 6, padding: '2px 0 6px',
+                  fontSize: 10, color: '#a1a1aa',
+                  letterSpacing: 0.8, userSelect: 'none' }}>
+      {open && (
+        <span style={{ fontWeight: 500 }}>
+          DEVELOPED BY ANA PAOLA STUMPF RODRIGUES
+        </span>
+      )}
+      <button onClick={toggle}
+              title={open ? 'Hide credit' : 'Show credit'}
+              style={{ background: 'transparent', border: 'none',
+                       cursor: 'pointer', color: '#a1a1aa',
+                       padding: 0, lineHeight: 1, fontSize: 10 }}>
+        {open ? '×' : 'i'}
+      </button>
     </div>
   );
 }
