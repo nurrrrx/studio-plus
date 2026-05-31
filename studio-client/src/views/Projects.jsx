@@ -2,9 +2,12 @@
 // accent lines) and a radial vignette. Project cubes are isometric SVGs
 // arranged in a centred row, sized so they visually rest on the grid texture.
 import { useEffect, useState } from 'react';
-import { listProjects, createProject, deleteProject, isAuthed, backendConfigured } from '../api.js';
+import { listProjects, createProject, deleteProject, saveProject, isAuthed, backendConfigured } from '../api.js';
 
-const DEFAULT_PROJECT = {
+// Used only as a dev-time fallback when the backend isn't configured
+// (VITE_API_URL unset). In production the server is the sole source of truth
+// — projects not in Postgres don't appear on the home grid.
+const DEV_FALLBACK_PROJECT = {
   id: 'alzeina',
   name: 'Al Zeina — Axonometric Study',
   location: 'Al Raha Beach, Abu Dhabi',
@@ -14,52 +17,103 @@ const DEFAULT_PROJECT = {
 const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || `p-${Date.now()}`;
 
 export default function Projects({ activeTitle, activeId, onOpen, onRename }) {
-  const [projects, setProjects] = useState([{ ...DEFAULT_PROJECT, name: activeTitle || DEFAULT_PROJECT.name }]);
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
+  // Project pending delete confirmation (rendered as a modal). null = closed.
+  const [pendingDelete, setPendingDelete] = useState(null);
 
-  // Hydrate from the backend if it's reachable. On failure (no backend in
-  // dev, or network) the default project remains visible.
-  useEffect(() => {
-    if (!backendConfigured()) return;
-    listProjects().then((list) => {
-      if (!list || list.length === 0) return;
-      setProjects(list.map((p) => ({ id: p.id, name: p.name, location: p.location || '—' })));
-    }).catch(() => {});
-  }, []);
+  // Hydrate from the backend. Server is the source of truth — the list shown
+  // is whatever Postgres says. If the backend is unreachable, surface that as
+  // an error rather than fabricating a default cube. In dev (no backend at
+  // all), fall back to the legacy single-project view so local work isn't
+  // blocked.
+  const refresh = () => {
+    if (!backendConfigured()) {
+      setProjects([{ ...DEV_FALLBACK_PROJECT, name: activeTitle || DEV_FALLBACK_PROJECT.name }]);
+      setLoading(false); setLoadError(null);
+      return;
+    }
+    setLoading(true); setLoadError(null);
+    listProjects()
+      .then((list) => {
+        setProjects((list || []).map((p) => ({ id: p.id, name: p.name, location: p.location || '—' })));
+        setLoading(false);
+      })
+      .catch((e) => { setLoadError(e.message || 'Could not reach the server'); setLoading(false); });
+  };
+  useEffect(refresh, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep the active card's name in sync with the live header title.
+  // Keep the active card's name in sync with the live header title (purely
+  // visual — the canonical name in Postgres only changes on rename).
   useEffect(() => {
-    setProjects((ps) => ps.map((p) => p.id === (activeId || 'alzeina') ? { ...p, name: activeTitle || p.name } : p));
+    if (!activeId) return;
+    setProjects((ps) => ps.map((p) => p.id === activeId ? { ...p, name: activeTitle || p.name } : p));
   }, [activeTitle, activeId]);
 
   const commitAdd = async () => {
     const n = newName.trim();
     if (!n) { setAdding(false); return; }
     const id = slugify(n);
-    // Optimistic add; the backend mirror happens in the background if authed.
-    setProjects((ps) => ps.find((p) => p.id === id) ? ps : [...ps, { id, name: n, location: '—' }]);
     setAdding(false); setNewName('');
-    if (backendConfigured() && isAuthed()) {
-      try { await createProject(id, n, ''); }
-      catch (e) { /* 409 (already exists) is fine; surface other errors silently */ }
+    if (!backendConfigured()) {
+      // Dev fallback: optimistic add to local state, no backend to mirror.
+      setProjects((ps) => ps.find((p) => p.id === id) ? ps : [...ps, { id, name: n, location: '—' }]);
+      return;
+    }
+    if (!isAuthed()) {
+      window.alert('Sign in to create a project.');
+      return;
+    }
+    try {
+      await createProject(id, n, '');
+      // Authoritative: only show what the server now has.
+      setProjects((ps) => ps.find((p) => p.id === id) ? ps : [...ps, { id, name: n, location: '—' }]);
+    } catch (e) {
+      // 409 means the slug already exists — just show what's there.
+      if (/409|already exists/i.test(e.message || '')) refresh();
+      else window.alert(`Couldn't create: ${e.message}`);
     }
   };
 
-  const removeProject = async (p) => {
-    if (!window.confirm(`Delete project "${p.name}"? This can't be undone.`)) return;
-    // Optimistic remove, then rollback on backend failure so the UI doesn't
-    // lie when the user's token expired between render and click.
+  const confirmDelete = async () => {
+    const p = pendingDelete; if (!p) return;
+    setPendingDelete(null);
+    if (!backendConfigured()) {
+      // Dev fallback: local-only delete.
+      setProjects((ps) => ps.filter((x) => x.id !== p.id));
+      return;
+    }
+    if (!isAuthed()) { window.alert('Sign in to delete projects.'); return; }
+    // Optimistic remove, rollback on failure so the UI mirrors Postgres.
     setProjects((ps) => ps.filter((x) => x.id !== p.id));
-    if (!(backendConfigured() && isAuthed())) return;
     try { await deleteProject(p.id); }
     catch (e) {
       setProjects((ps) => ps.find((x) => x.id === p.id) ? ps : [...ps, p]);
       window.alert(`Couldn't delete: ${e.message}`);
     }
   };
-  // Only show the ✕ for projects we can actually delete: requires auth and
-  // we don't allow deleting the project that's currently open.
+
+  const renameProject = async (p) => {
+    const next = window.prompt('Rename project', p.name);
+    const trimmed = next?.trim();
+    if (!trimmed || trimmed === p.name) return;
+    // Optimistic local update; mirror to Postgres so the next list-load
+    // returns the new name too.
+    setProjects((ps) => ps.map((x) => x.id === p.id ? { ...x, name: trimmed } : x));
+    if (p.id === activeId) onRename?.(trimmed);
+    if (!(backendConfigured() && isAuthed())) return;
+    try { await saveProject(p.id, { name: trimmed }); }
+    catch (e) {
+      setProjects((ps) => ps.map((x) => x.id === p.id ? { ...x, name: p.name } : x));
+      window.alert(`Couldn't rename: ${e.message}`);
+    }
+  };
+
+  // ✕ visible only when we can actually persist the delete, and never on the
+  // currently open project (would orphan the view).
   const canDelete = backendConfigured() && isAuthed();
 
   return (
@@ -67,29 +121,63 @@ export default function Projects({ activeTitle, activeId, onOpen, onRename }) {
       <div className="projects-bg-grid" />
       <div className="projects-vignette" />
       <div className="projects-cubes">
-        {projects.map((p, i) => (
+        {loading && <div className="projects-status">Loading projects…</div>}
+        {loadError && (
+          <div className="projects-status projects-status-err">
+            Couldn't load projects: {loadError}.{' '}
+            <button type="button" className="projects-status-link" onClick={refresh}>Retry</button>
+          </div>
+        )}
+        {!loading && !loadError && projects.map((p, i) => (
           <CubeTile key={p.id}
                     name={p.name}
                     sub={p.location}
                     paletteIndex={i}
                     onClick={() => onOpen?.(p)}
-                    onDelete={canDelete && p.id !== (activeId || 'alzeina') ? () => removeProject(p) : undefined}
-                    onDoubleClick={() => {
-                      const next = prompt('Rename project', p.name);
-                      if (next && next.trim()) {
-                        setProjects((ps) => ps.map((x) => x.id === p.id ? { ...x, name: next.trim() } : x));
-                        if (p.id === (activeId || 'alzeina')) onRename?.(next.trim());
-                      }
-                    }} />
+                    onDelete={canDelete && p.id !== activeId ? () => setPendingDelete(p) : undefined}
+                    onDoubleClick={() => renameProject(p)} />
         ))}
-        {adding ? (
+        {!loading && !loadError && (adding ? (
           <NewCubeInput value={newName} onChange={setNewName}
                         onCommit={commitAdd}
                         onCancel={() => { setAdding(false); setNewName(''); }} />
         ) : (
           <CubeTile isNew name="New project" sub="Start a fresh study"
                     onClick={() => { setAdding(true); setNewName(''); }} />
-        )}
+        ))}
+      </div>
+
+      {pendingDelete && (
+        <DeleteModal name={pendingDelete.name}
+                     onConfirm={confirmDelete}
+                     onCancel={() => setPendingDelete(null)} />
+      )}
+    </div>
+  );
+}
+
+function DeleteModal({ name, onConfirm, onCancel }) {
+  // Close on Esc; confirm on Enter. Backdrop click also cancels.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onCancel();
+      else if (e.key === 'Enter') onConfirm();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onConfirm, onCancel]);
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Delete project?</h3>
+        <p>
+          “{name}” will be permanently removed from the server, including all of its
+          saved view and prop layers. This can't be undone.
+        </p>
+        <div className="modal-actions">
+          <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
+          <button type="button" className="btn-danger" onClick={onConfirm} autoFocus>Delete</button>
+        </div>
       </div>
     </div>
   );

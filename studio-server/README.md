@@ -25,11 +25,16 @@ Express + Postgres backend for **studio+**. Stores per-project settings
 | GET    | `/api/projects`         | public      | list `{ id, name, location, updatedAt }`                              |
 | GET    | `/api/projects/:id`     | public      | full project doc; `settings` is the legacy blob shape                 |
 | POST   | `/api/projects`         | bearer JWT  | body `{ id, name, location?, settings? }`; 409 if id exists           |
-| PUT    | `/api/projects/:id`     | bearer JWT  | upsert; body `{ settings?, name?, location? }`                        |
+| PUT    | `/api/projects/:id`     | bearer JWT  | upsert; body `{ settings?, name?, location? }` — used both for live setting saves and for renames from the home grid |
 | DELETE | `/api/projects/:id`     | bearer JWT  | remove                                                                |
 
 CORS allows `https://nurrrrx.github.io` plus the Vite dev/preview origins
 by default (override via `CORS_ORIGINS`).
+
+This API is the **sole source of truth** for the client's projects grid.
+Anything the user does in the UI (create, rename, change view, place
+props, delete) ends up here before the UI commits — there is no
+client-only state of record.
 
 ## Required env vars
 

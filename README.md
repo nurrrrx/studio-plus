@@ -48,7 +48,14 @@ filter) for the server.
   project's saved view).
 - **Writes require auth**: the splash on every load offers username /
   password. Default creds (overridable via env): `kitty` / `stevens`.
+  After a successful sign-in the splash auto-dismisses in 3s. A
+  **Sign out** button in the top header is available afterwards.
 - **Guest mode** is allowed — the app stays usable, just can't persist.
+- **Postgres is the source of truth.** The projects grid lists exactly
+  what the server returns; create / rename / delete all `PUT`/`POST`/
+  `DELETE` against the API so every change lands in
+  `studio_plus.projects` in Postgres before the UI commits. The delete
+  flow goes through a confirmation modal, not `window.confirm`.
 
 ## Common tasks
 

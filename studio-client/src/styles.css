@@ -195,6 +195,52 @@ body { font-family: var(--sans); color: var(--ink); background: var(--paper); }
 .cube-tile:hover .cube-delete { display: flex; }
 .cube-delete:hover { background: #b03030; color: #fff; border-color: #b03030; }
 
+/* Inline status messages on the Projects grid (loading / load error). */
+.projects-status {
+  color: rgba(203, 213, 225, 0.75); font-size: 13px;
+  padding: 10px 16px; align-self: center;
+}
+.projects-status-err { color: #f8a3a3; }
+.projects-status-link {
+  background: none; border: none; padding: 0;
+  color: #7ab8ff; text-decoration: underline; cursor: pointer; font-size: 13px;
+}
+
+/* Generic modal: dim backdrop + centred card. Used for the delete-project
+   confirmation. */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(8, 14, 28, 0.65);
+  display: flex; align-items: center; justify-content: center;
+  animation: modal-fade 120ms ease-out;
+}
+.modal {
+  background: #0e172c; color: #cbd5e1;
+  border: 1px solid #27334a; border-radius: 8px;
+  padding: 20px 22px;
+  max-width: 380px; width: calc(100% - 32px);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+  font-family: var(--sans, system-ui);
+  animation: modal-pop 140ms ease-out;
+}
+.modal h3 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: #f1f5f9; }
+.modal p { margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: rgba(203, 213, 225, 0.85); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-ghost, .btn-danger {
+  border-radius: 4px; padding: 7px 14px;
+  font-weight: 500; font-size: 12px; cursor: pointer;
+  font-family: inherit;
+}
+.btn-ghost {
+  background: transparent; color: rgba(203, 213, 225, 0.9);
+  border: 1px solid #27334a;
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.06); color: #f1f5f9; }
+.btn-danger { background: #b03030; color: #fff; border: 1px solid #b03030; }
+.btn-danger:hover { background: #c34a4a; border-color: #c34a4a; }
+@keyframes modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-pop  { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+
 /* ---------- Projects (home): tilted blueprint grid + cubes ----------
    Deep navy backdrop with a subtle 2D-rotated grid (fine cells + an accent
    grid every 6 cells) and a soft radial vignette pulling focus to the centre.
