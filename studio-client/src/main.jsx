@@ -6,16 +6,28 @@ import './styles.css';
 import { getToken } from './api.js';
 
 // Decide which top-level layout to render based on the URL.
-//  - /studio-plus/                  -> classic 3D canvas app
-//  - /studio-plus/v2/               -> v2 projects list (no sidebars)
-//  - /studio-plus/v2/<projectId>/   -> v2 project view (both sidebars)
+//  - /studio-plus/                  -> v2 projects list (no sidebars) — DEFAULT
+//  - /studio-plus/<projectId>/      -> v2 project view (both sidebars)
+//  - /studio-plus/v1/               -> classic 3D canvas app
+//  - (legacy) /studio-plus/v2/[<id>/] -> still routed to v2 for backward compat
 // The 404.html bounce + the small inline unpacker in each index.html
 // restore the real path before this script runs, so window.location.
 // pathname is the URL the user actually typed / shared.
+const RAW_BASE = (import.meta.env.BASE_URL || '/').replace(/\/$/, ''); // '/studio-plus' or ''
 const PATH = typeof window !== 'undefined' ? window.location.pathname : '';
-const IS_V2 = /\/v2(\/|$)/.test(PATH);
-const V2_PROJECT_MATCH = PATH.match(/\/v2\/([^/]+)\/?$/);
-const V2_PROJECT_ID = V2_PROJECT_MATCH ? V2_PROJECT_MATCH[1] : null;
+const SUB = PATH.indexOf(RAW_BASE) === 0 ? PATH.slice(RAW_BASE.length) || '/' : PATH;
+const IS_V1 = /^\/v1(\/|$)/.test(SUB);
+// Legacy /v2/... still works.
+const LEGACY_V2_PROJECT = SUB.match(/^\/v2\/([^/]+)\/?$/);
+const LEGACY_V2_LIST    = /^\/v2\/?$/.test(SUB);
+// New default: /<projectId>/ on the base root (must not be v1/v2/api/etc).
+const ROOT_PROJECT = SUB.match(/^\/([^/]+)\/?$/);
+const ROOT_IS_LIST = SUB === '/' || SUB === '';
+const RESERVED = new Set(['v1', 'v2', 'api', 'assets', 'data']);
+const V2_PROJECT_ID = LEGACY_V2_PROJECT
+  ? LEGACY_V2_PROJECT[1]
+  : (ROOT_PROJECT && !RESERVED.has(ROOT_PROJECT[1])) ? ROOT_PROJECT[1] : null;
+const IS_V2 = !IS_V1 && (ROOT_IS_LIST || LEGACY_V2_LIST || V2_PROJECT_ID != null);
 
 // In production the dev /api/settings middleware doesn't exist. Route those
 // calls to the studio+ backend (per current project), or fall back to the

@@ -6,29 +6,56 @@
 
 import { useEffect, useState } from 'react';
 import './v2.css';
-import { listProjects, backendConfigured } from './api.js';
+import './styles.css'; // for the .loader-blueprint splash classes
+import { listProjects, backendConfigured, isAuthed, clearToken } from './api.js';
 import { loadGeo } from './geo.js';
 import DeckOrbit3D from './views/DeckOrbit3D.jsx';
+import Loader from './views/Loader.jsx';
 
 const SIDEBAR_W_OPEN = 256;
 const SIDEBAR_W_COLLAPSED = 56;
 const RIGHT_W_OPEN = 280;
 const RIGHT_W_COLLAPSED = 0;
-const BASE = '/studio-plus';
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
 
 // Top-level switch: with a projectId we show the full project view
 // (both sidebars, sample TOC, big pane). Without one we show the
 // projects-list page — no sidebars, just the breadcrumb + a grid of
-// project cards. The /studio-plus/v2/ URL hits the listing; clicking
-// a card navigates to /studio-plus/v2/<id>/.
+// project cards. The /studio-plus/ URL hits the listing; clicking a
+// card navigates to /studio-plus/<id>/. (Legacy /v2/[<id>/] still works.)
+//
+// Wrapped with the blueprint Loader from the classic app: it doubles as
+// the auth gate (username/password or "Continue as guest") and a 3-second
+// splash before revealing the V2 routes.
 export default function AppV2({ projectId = null }) {
-  if (!projectId) return <ProjectsListPage />;
-  return <ProjectViewPage projectId={projectId} />;
+  const [loaderVisible, setLoaderVisible] = useState(true);
+  const [loaderMounted, setLoaderMounted] = useState(true);
+  const [, setAuthed] = useState(isAuthed);
+  const dismissLoader = ({ authed: didAuth } = {}) => {
+    if (didAuth) setAuthed(true);
+    setLoaderVisible(false);
+    setTimeout(() => setLoaderMounted(false), 700);
+  };
+  const signOut = () => {
+    clearToken();
+    setAuthed(false);
+    setLoaderMounted(true);
+    setLoaderVisible(true);
+  };
+  const inner = projectId
+    ? <ProjectViewPage projectId={projectId} onSignOut={signOut} />
+    : <ProjectsListPage onSignOut={signOut} />;
+  return (
+    <>
+      {loaderMounted && <Loader visible={loaderVisible} onDone={dismissLoader} />}
+      {inner}
+    </>
+  );
 }
 
 // ---------- Projects list (no sidebars) -------------------------------------
 
-function ProjectsListPage() {
+function ProjectsListPage({ onSignOut }) {
   const [projects, setProjects] = useState(null);
   const [loadErr, setLoadErr] = useState(null);
   useEffect(() => {
@@ -51,8 +78,14 @@ function ProjectsListPage() {
             { label: 'projects', current: true },
           ]} />
           <div style={{ flex: 1 }} />
-          <a href="../" className="v2-link" title="Back to the canvas app">
-            ← classic view
+          {isAuthed() && (
+            <button onClick={onSignOut} className="v2-link" title="Sign out"
+                    style={{ cursor: 'pointer' }}>
+              Sign out
+            </button>
+          )}
+          <a href={`${BASE}/v1/`} className="v2-link" title="Switch to the classic canvas app">
+            classic view →
           </a>
         </header>
         <main className="v2-main">
@@ -72,7 +105,7 @@ function ProjectsListPage() {
             ) : (
               <div className="v2-card-grid">
                 {projects.map((p) => (
-                  <a key={p.id} href={`${BASE}/v2/${encodeURIComponent(p.id)}/`}
+                  <a key={p.id} href={`${BASE}/${encodeURIComponent(p.id)}/`}
                      className="v2-card v2-project-card">
                     <div>
                       <div className="v2-card-title">{p.name || p.id}</div>
@@ -96,11 +129,10 @@ function ProjectsListPage() {
 
 // ---------- Project view (both sidebars) ------------------------------------
 
-function ProjectViewPage({ projectId }) {
+function ProjectViewPage({ projectId, onSignOut }) {
   const [open, setOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [active, setActive] = useState('overview');
-  const [activeToc, setActiveToc] = useState('layers/bike-lanes');
   // Friendly project name for the breadcrumb (lazy fetch).
   const [projectName, setProjectName] = useState(projectId);
   // Geometry + chrome for the embedded canvas.
@@ -113,6 +145,7 @@ function ProjectViewPage({ projectId }) {
   // sees a valid DOM node instead of null.
   const [customizationTarget, setCustomizationTarget] = useState(null);
   const [tourTarget,          setTourTarget]          = useState(null);
+  const [controlsTarget,      setControlsTarget]      = useState(null);
 
   // Tell the fetch interceptor in main.jsx which project to talk to.
   useEffect(() => {
@@ -149,13 +182,19 @@ function ProjectViewPage({ projectId }) {
           </button>
           <span className="v2-sep" />
           <Breadcrumb crumbs={[
-            { label: 'studio+',  href: `${BASE}/v2/` },
-            { label: 'projects', href: `${BASE}/v2/` },
+            { label: 'studio+',  href: `${BASE}/` },
+            { label: 'projects', href: `${BASE}/` },
             { label: projectName || projectId, current: true },
           ]} />
           <div style={{ flex: 1 }} />
-          <a href="../../" className="v2-link" title="Back to the canvas app">
-            ← classic view
+          {isAuthed() && (
+            <button onClick={onSignOut} className="v2-link" title="Sign out"
+                    style={{ cursor: 'pointer' }}>
+              Sign out
+            </button>
+          )}
+          <a href={`${BASE}/v1/`} className="v2-link" title="Switch to the classic canvas app">
+            classic view →
           </a>
           <button className="v2-icon-btn"
                   title={rightOpen ? 'Hide details panel' : 'Show details panel'}
@@ -172,12 +211,13 @@ function ProjectViewPage({ projectId }) {
                            freeOrbit={freeOrbit}
                            onFreeOrbitChange={setFreeOrbit}
                            customizationTarget={open ? customizationTarget : null}
-                           tourTarget={open ? tourTarget : null} />
+                           tourTarget={open ? tourTarget : null}
+                           controlsTarget={rightOpen ? controlsTarget : null} />
             </div>
           )}
         </main>
       </SidebarInset>
-      <RightSidebar open={rightOpen} active={activeToc} setActive={setActiveToc} />
+      <RightSidebar open={rightOpen} controlsRef={setControlsTarget} />
     </div>
   );
 }
@@ -290,44 +330,12 @@ function SidebarGroup({ group, open, active, setActive }) {
   );
 }
 
-// ---------- Right sidebar (Table of Contents, shadcn sidebar-15 style) ------
+// ---------- Right sidebar (canvas controls portal host) --------------------
+// DeckOrbit3D's rotation/zoom/tilt/target sliders + camera buttons are
+// portaled into this container so they live in the sidebar instead of
+// floating on the canvas.
 
-// Studio+-flavoured nav so the page reads like the real app. Replace with
-// dynamic data (savedViews, propLayers) once the panel is wired.
-const TOC_GROUPS = [
-  {
-    title: 'Overview',
-    items: [
-      { key: 'overview/project', label: 'Project info' },
-      { key: 'overview/snapshot', label: 'Current snapshot' },
-    ],
-  },
-  {
-    title: 'Layers',
-    items: [
-      { key: 'layers/pavement',  label: 'High-albedo pavement' },
-      { key: 'layers/bike-lanes', label: 'Bike lanes', isActive: true },
-      { key: 'layers/green',     label: 'Green corridors' },
-      { key: 'layers/park',      label: 'Dense large park' },
-      { key: 'layers/burjeel',   label: 'Burjeel wind tower' },
-    ],
-  },
-  {
-    title: 'Views',
-    items: [
-      { key: 'views/default',  label: 'Default' },
-    ],
-  },
-  {
-    title: 'Camera tour',
-    items: [
-      { key: 'tour/config',   label: 'Configuration' },
-      { key: 'tour/playback', label: 'Playback' },
-    ],
-  },
-];
-
-function RightSidebar({ open, active, setActive }) {
+function RightSidebar({ open, controlsRef }) {
   if (!open) return null;
   return (
     <aside className="v2-right-sidebar"
@@ -335,32 +343,9 @@ function RightSidebar({ open, active, setActive }) {
       <div className="v2-sidebar-content">
         <div className="v2-sb-group">
           <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
-            <span>Table of contents</span>
+            <span>View controls</span>
           </div>
-          <ul className="v2-sb-list">
-            {TOC_GROUPS.map((group) => (
-              <li key={group.title}>
-                <div className="v2-toc-section">
-                  <button className="v2-sb-item v2-toc-section-btn"
-                          onClick={() => setActive(`section/${group.title}`)}>
-                    <span className="v2-sb-label" style={{ fontWeight: 600 }}>{group.title}</span>
-                  </button>
-                  {group.items?.length > 0 && (
-                    <ul className="v2-toc-sub">
-                      {group.items.map((it) => (
-                        <li key={it.key}>
-                          <button className={`v2-sb-item v2-toc-sub-item ${active === it.key ? 'is-active' : ''}`}
-                                  onClick={() => setActive(it.key)}>
-                            <span className="v2-sb-label">{it.label}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="v2-sb-portal" ref={controlsRef} />
         </div>
       </div>
     </aside>

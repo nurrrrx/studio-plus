@@ -253,7 +253,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                                        // page surface the panels inside its left
                                        // sidebar without lifting the state out.
                                        customizationTarget = null,
-                                       tourTarget = null }) {
+                                       tourTarget = null,
+                                       controlsTarget = null }) {
   const show = (k) => chrome[k] !== false;
   const [showBuildings, setShowBuildings] = useState(true);
   const [showRoads, setShowRoads] = useState(true);
@@ -363,6 +364,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // means tall buildings between camera and slab can occlude the slab.
   const [layersInFront, setLayersInFront] = useState(false);
   const [newLayerName, setNewLayerName] = useState('');
+  const [dragLayerId, setDragLayerId] = useState(null);
+  const [dragOverLayerId, setDragOverLayerId] = useState(null);
   const [rejectionMsg, setRejectionMsg] = useState(null); // brief on-canvas toast
   const rejectionTimerRef = useRef(null);
   // When the user drags one of the in-progress polygon / lane vertices, we
@@ -1204,10 +1207,11 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         }
       }
     } else {
-      // Min-distance enforcement is gated on smartPlace: without it on, the
-      // fill is allowed to pack same-type props densely (coexistence).
-      // Different-type props never block each other — they coexist by design.
-      const enforce = !!smartPlace[type];
+      // Smart placement defaults ON: enforce minimum spacing unless the
+      // user has explicitly set smartPlace[type] === false (the per-type
+      // toggle was removed from the UI, but old saved settings may still
+      // carry explicit false values).
+      const enforce = smartPlace[type] !== false;
       const minD2 = enforce ? widthM * widthM : 0;
       const maxAttempts = Math.min(200000, Math.max(2000, (count > 0 ? count : 200) * 50));
       for (let i = 0; i < maxAttempts && newProps.length < want; i++) {
@@ -1251,7 +1255,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   //   - billboard props (trees/canopy/etc): require a minimum centre-to-centre
   //     distance to the nearest already-placed prop of the same type.
   const applySmartPlacement = (pos, type, ignoreId) => {
-    if (!smartPlace[type]) return pos;
+    // Default ON; only bail if the user explicitly disabled this type.
+    if (smartPlace[type] === false) return pos;
     const m = PROP_META[type]; if (!m) return pos;
     const o = propSizes[type] || {};
     const heightM = o.h ?? m.size;
@@ -3443,11 +3448,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
           <div style={{ fontSize: 11, color: '#9a948a', marginBottom: 4, lineHeight: 1.3 }}>
             Enter custom height & width per prop type. Affects existing placements too.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: '2px 8px', alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '2px 8px', alignItems: 'center' }}>
             <div style={{ fontSize: 11, color: '#6f685c' }} />
             <div style={{ fontSize: 10, color: '#9a948a', textAlign: 'center', letterSpacing: 0.5 }}>H</div>
             <div style={{ fontSize: 10, color: '#9a948a', textAlign: 'center', letterSpacing: 0.5 }}>W</div>
-            <div style={{ fontSize: 10, color: '#9a948a', textAlign: 'center', letterSpacing: 0.5 }} title="Smart placement: tiles snap to grid; trees/canopy enforce minimum distance">Smart</div>
             <div style={{ fontSize: 10, color: '#9a948a', textAlign: 'center', letterSpacing: 0.5 }} title="Tint colour applied to the prop">Colour</div>
             {Object.entries(PROP_META).map(([k, m]) => {
               const o = propSizes[k] || {};
@@ -3468,12 +3472,6 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                   <input type="number" value={wVal} step={0.5} min={0.1}
                          onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setW(n); }}
                          style={{ width: 46, fontSize: 11, padding: '1px 3px', textAlign: 'center' }} />
-                  <input type="checkbox" checked={!!smartPlace[k]}
-                         onChange={(e) => setSmartPlace((s) => ({ ...s, [k]: e.target.checked }))}
-                         title={m.flat
-                           ? 'Snap to a grid sized by the tile so they tessellate side-by-side'
-                           : 'Enforce minimum distance between props of this type so they don’t overlap'}
-                         style={{ margin: '0 auto' }} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'center' }}>
                     <input type="color" value={propColors[k] || '#ffffff'}
                            onChange={(e) => setPropColors((c) => ({ ...c, [k]: e.target.value }))}
@@ -3549,32 +3547,98 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 const isActive = l.id === activeLayerId;
                 const visible = l.visible !== false;
                 const updateLayer = (changes) => setPropLayers((ls) => ls.map((x) => x.id === l.id ? { ...x, ...changes } : x));
+                const swatch = l.color || ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8];
+                const isDragging = dragLayerId === l.id;
+                const isDragOver = dragOverLayerId === l.id && dragLayerId && dragLayerId !== l.id;
                 return (
-                  <div key={l.id} style={{
+                  <div key={l.id}
+                       draggable
+                       onDragStart={(e) => {
+                         setDragLayerId(l.id);
+                         try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', l.id); } catch (_) {}
+                       }}
+                       onDragEnd={() => { setDragLayerId(null); setDragOverLayerId(null); }}
+                       onDragOver={(e) => {
+                         if (!dragLayerId || dragLayerId === l.id) return;
+                         e.preventDefault();
+                         try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+                         if (dragOverLayerId !== l.id) setDragOverLayerId(l.id);
+                       }}
+                       onDragLeave={() => { if (dragOverLayerId === l.id) setDragOverLayerId(null); }}
+                       onDrop={(e) => {
+                         e.preventDefault();
+                         const fromId = dragLayerId;
+                         if (!fromId || fromId === l.id) return;
+                         setPropLayers((ls) => {
+                           const from = ls.findIndex((x) => x.id === fromId);
+                           const to = ls.findIndex((x) => x.id === l.id);
+                           if (from < 0 || to < 0) return ls;
+                           const next = ls.slice();
+                           const [moved] = next.splice(from, 1);
+                           next.splice(to, 0, moved);
+                           return next;
+                         });
+                         setDragLayerId(null);
+                         setDragOverLayerId(null);
+                       }}
+                       style={{
                           display: 'flex', flexDirection: 'column',
                           background: isActive ? 'rgba(60, 200, 110, 0.16)' : 'transparent',
-                          borderTop: i === 0 ? 'none' : '1px solid var(--line)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px' }}>
+                          borderTop: i === 0 ? 'none' : '1px solid var(--line)',
+                          opacity: isDragging ? 0.45 : 1,
+                          boxShadow: isDragOver ? 'inset 0 2px 0 0 #4c8cdc' : 'none' }}>
+                  {/* Line 1: drag handle | eye | index+name | count | delete */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px 2px' }}>
+                    <span title="Drag to reorder"
+                          style={{ cursor: 'grab', color: '#bdb6a4', fontSize: 11, lineHeight: 1,
+                                   userSelect: 'none', padding: '0 2px' }}>
+                      ⋮⋮
+                    </span>
                     <button onClick={() => updateLayer({ visible: !visible })}
                             title={visible ? 'hide this layer' : 'show this layer'}
-                            style={{ fontSize: 12, padding: '1px 5px', border: '1px solid var(--line)',
+                            style={{ fontSize: 11, padding: '1px 4px', border: '1px solid var(--line)',
                                      background: '#fff', borderRadius: 3, cursor: 'pointer',
                                      color: visible ? '#3a342c' : '#bdb6a4', lineHeight: 1, opacity: visible ? 1 : 0.6 }}>
                       {visible ? '\u{1F441}' : '\u{2715}'}
                     </button>
-                    <span style={{ flex: 1, fontSize: 11, color: visible ? '#3a342c' : '#9a948a',
-                                   cursor: 'pointer', textDecoration: visible ? 'none' : 'line-through' }}
-                          title="set active"
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 11,
+                                   color: visible ? '#3a342c' : '#9a948a',
+                                   cursor: 'pointer',
+                                   textDecoration: visible ? 'none' : 'line-through',
+                                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                          title={`${l.name} — click to set active`}
                           onClick={() => setActiveLayerId(l.id)}>
                       <b>{i + 1}.</b> {l.name}
                     </span>
-                    <span style={{ fontSize: 10, color: '#6f685c' }}>{count}</span>
+                    <span style={{ fontSize: 10, color: '#6f685c', minWidth: 14, textAlign: 'right' }}>{count}</span>
+                    <button onClick={() => {
+                              setPropLayers((ls) => ls.filter((x) => x.id !== l.id));
+                              setPropsItems((items) => items.map((p) => p.layerId === l.id ? { ...p, layerId: null } : p));
+                              if (activeLayerId === l.id) setActiveLayerId(null);
+                            }}
+                            title="delete layer — props in this layer revert to no layer"
+                            style={{ fontSize: 11, padding: '1px 5px', border: '1px solid var(--line)',
+                                     background: '#fff', borderRadius: 3, cursor: 'pointer', color: '#b03030', lineHeight: 1 }}>
+                      ×
+                    </button>
+                  </div>
+                  {/* Line 2: color, alpha slider, + Add (if polygon), rename */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px 2px 22px' }}>
+                    <input type="color" value={swatch}
+                           onChange={(e) => updateLayer({ color: e.target.value })}
+                           title="layer slab + label colour"
+                           style={{ width: 22, height: 16, border: '1px solid var(--line)',
+                                    borderRadius: 3, padding: 0, cursor: 'pointer' }} />
+                    <input type="range" min={0} max={1} step={0.05}
+                           value={typeof l.alpha === 'number' ? l.alpha : 0.5}
+                           onChange={(e) => updateLayer({ alpha: Number(e.target.value) })}
+                           title={`slab transparency (${Math.round((typeof l.alpha === 'number' ? l.alpha : 0.5) * 100)}%)`}
+                           style={{ flex: 1, minWidth: 0, height: 14, accentColor: swatch }} />
                     {l.polygon && l.polygon.length >= 3 && (
                       <button onClick={() => {
                                 setActiveLayerId(l.id);
                                 setFillPolygon(l.polygon.map(([x, y]) => [x, y]));
                                 setFillMode('config');
-                                // close any conflicting modes
                                 setPlaceMode(null); setDeleteMode(false);
                                 setMoveMode(false); setMovingPropId(null);
                                 setSelectMode(false); setSelectedPropId(null);
@@ -3582,7 +3646,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                               title="add more props into this layer's polygon"
                               style={{ fontSize: 10, padding: '1px 5px', border: '1px solid var(--line)',
                                        background: '#fff', borderRadius: 3, cursor: 'pointer', color: '#2f6f3e' }}>
-                        + Add
+                        +
                       </button>
                     )}
                     <button onClick={() => {
@@ -3596,32 +3660,22 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                                      background: '#fff', borderRadius: 3, cursor: 'pointer', color: '#6f685c' }}>
                       ✎
                     </button>
-                    <button onClick={() => {
-                              setPropLayers((ls) => ls.filter((x) => x.id !== l.id));
-                              setPropsItems((items) => items.map((p) => p.layerId === l.id ? { ...p, layerId: null } : p));
-                              if (activeLayerId === l.id) setActiveLayerId(null);
-                            }}
-                            title="delete layer — props in this layer revert to no layer"
-                            style={{ fontSize: 11, padding: '1px 5px', border: '1px solid var(--line)',
-                                     background: '#fff', borderRadius: 3, cursor: 'pointer', color: '#b03030', lineHeight: 1 }}>
-                      ×
-                    </button>
                   </div>
-                  {/* per-layer offsets row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px 4px 28px',
+                  {/* Line 3: per-layer offsets */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '0 6px 4px 22px',
                                 fontSize: 10, color: '#6f685c' }}>
                     <span title="Shift the layer along the X axis">X</span>
                     <input type="number" step={1} value={l.offsetX || 0}
                            onChange={(e) => updateLayer({ offsetX: Number(e.target.value) || 0 })}
-                           style={{ width: 44, fontSize: 10, padding: '1px 3px', textAlign: 'center' }} />
+                           style={{ width: 38, fontSize: 10, padding: '1px 2px', textAlign: 'center' }} />
                     <span title="Shift the layer along the Y axis">Y</span>
                     <input type="number" step={1} value={l.offsetY || 0}
                            onChange={(e) => updateLayer({ offsetY: Number(e.target.value) || 0 })}
-                           style={{ width: 44, fontSize: 10, padding: '1px 3px', textAlign: 'center' }} />
+                           style={{ width: 38, fontSize: 10, padding: '1px 2px', textAlign: 'center' }} />
                     <span title="Extra vertical offset on top of the explode gap">Z</span>
                     <input type="number" step={0.5} value={l.offsetZ || 0}
                            onChange={(e) => updateLayer({ offsetZ: Number(e.target.value) || 0 })}
-                           style={{ width: 44, fontSize: 10, padding: '1px 3px', textAlign: 'center' }} />
+                           style={{ width: 38, fontSize: 10, padding: '1px 2px', textAlign: 'center' }} />
                     {(l.offsetX || l.offsetY || l.offsetZ) ? (
                       <button onClick={() => updateLayer({ offsetX: 0, offsetY: 0, offsetZ: 0 })}
                               title="reset offsets"
@@ -3630,20 +3684,6 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                         ↻
                       </button>
                     ) : null}
-                    <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                      <span title="layer slab + label colour">
-                        <input type="color"
-                               value={l.color || ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8]}
-                               onChange={(e) => updateLayer({ color: e.target.value })}
-                               style={{ width: 22, height: 16, border: '1px solid var(--line)',
-                                        borderRadius: 3, padding: 0, cursor: 'pointer' }} />
-                      </span>
-                      <input type="range" min={0} max={1} step={0.05}
-                             value={typeof l.alpha === 'number' ? l.alpha : 0.5}
-                             onChange={(e) => updateLayer({ alpha: Number(e.target.value) })}
-                             title={`slab transparency (${Math.round((typeof l.alpha === 'number' ? l.alpha : 0.5) * 100)}%)`}
-                             style={{ width: 50, height: 14, accentColor: l.color || '#7a7468' }} />
-                    </span>
                   </div>
                   </div>
                 );
@@ -3792,123 +3832,138 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       {/* Full-height right-hand control stack. Top → bottom:
             (1) Compass   (2) Rotation + Zoom tall sliders
             (3) Gizmo3D   (4) Target X + Y tall sliders   (5) Target Z tall slider
-            (6) Hand / Reset / Photo   (7) Save settings */}
-      <div style={{ position: 'absolute', right: 16,
-                    top: 'calc(var(--header-inset, 0px) + 14px)',
-                    bottom: 'calc(var(--footer-inset, 0px) + 12px)',
-                    zIndex: 6,
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', gap: 8,
-                    transition: 'top 0.22s ease, bottom 0.22s ease' }}
-           onMouseDown={(e) => e.stopPropagation()}>
+            (6) Hand / Reset / Photo   (7) Save settings
+          When controlsTarget is provided, the same stack is rendered into
+          the V2 right sidebar via portal and the canvas overlay is omitted. */}
+      {(() => {
+        const inPortal = !!controlsTarget;
+        const outerStyle = inPortal ? {
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: 8, padding: '8px 4px',
+        } : {
+          position: 'absolute', right: 16,
+          top: 'calc(var(--header-inset, 0px) + 14px)',
+          bottom: 'calc(var(--footer-inset, 0px) + 12px)',
+          zIndex: 6,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: 8,
+          transition: 'top 0.22s ease, bottom 0.22s ease',
+        };
+        // In the sidebar there's no fixed parent height to flex into, so
+        // give each tall-slider row a definite height instead of flex:1.
+        const sliderRowStyle = inPortal
+          ? { display: 'flex', gap: 1, alignItems: 'stretch', height: 160, minHeight: 0, width: 108 }
+          : { display: 'flex', gap: 1, alignItems: 'stretch', flex: 1, minHeight: 0, width: 108 };
+        const stack = (
+          <div style={outerStyle} onMouseDown={(e) => e.stopPropagation()}>
+            {/* Row 1 — Compass */}
+            {show('compass') && <Compass bearing={finite(viewState.rotationOrbit, 0)} onBearing={setBearing} />}
 
-        {/* Row 1 — Compass */}
-        {show('compass') && <Compass bearing={finite(viewState.rotationOrbit, 0)} onBearing={setBearing} />}
+            {/* Row 2 — Rotation + Zoom + Tilt tall sliders */}
+            {(show('compass') || show('zoom') || show('tilt')) && (
+              <div style={sliderRowStyle}>
+                {show('compass') && (
+                  <TallSlider label="Rot°" value={finite(viewState.rotationOrbit, 0)}
+                              min={0} max={360} step={1} wrap color="#dc8a3a"
+                              valueFmt={(v) => Math.round(((v % 360) + 360) % 360)}
+                              onChange={(v) => setBearing(((v % 360) + 360) % 360)} />
+                )}
+                {show('zoom') && (
+                  <TallSlider label="Zoom" value={finite(viewState.zoom, 0)}
+                              min={-3} max={6} step={0.1} color="#3a8fdc"
+                              onChange={(z) => setViewState((vs) => ({ ...vs, zoom: Math.max(-3, Math.min(6, z)) }))} />
+                )}
+                {show('tilt') && (
+                  <TallSlider label="Tilt°" value={finite(viewState.rotationX, 55)}
+                              min={0} max={89} step={1} color="#7a6fd0"
+                              valueFmt={(v) => Math.round(v)}
+                              onChange={(p) => setPitch(p)} />
+                )}
+              </div>
+            )}
 
-        {/* Row 2 — Rotation + Zoom + Tilt tall sliders */}
-        {(show('compass') || show('zoom') || show('tilt')) && (
-          <div style={{ display: 'flex', gap: 1, alignItems: 'stretch',
-                        flex: 1, minHeight: 0, width: 108 }}>
-            {show('compass') && (
-              <TallSlider label="Rot°" value={finite(viewState.rotationOrbit, 0)}
-                          min={0} max={360} step={1} wrap color="#dc8a3a"
-                          valueFmt={(v) => Math.round(((v % 360) + 360) % 360)}
-                          onChange={(v) => setBearing(((v % 360) + 360) % 360)} />
+            {/* Row 3 — Gizmo3D (visual XYZ orientation indicator) */}
+            {show('gizmo') && (
+              <Gizmo3D bearing={finite(viewState.rotationOrbit, 0)} pitch={finite(viewState.rotationX, 55)}
+                       onSet={({ bearing, pitch }) => setViewState((v) => ({
+                         ...v,
+                         rotationOrbit: bearing != null ? bearing : v.rotationOrbit,
+                         rotationX: pitch != null ? clampX(pitch) : v.rotationX,
+                       }))} />
             )}
-            {show('zoom') && (
-              <TallSlider label="Zoom" value={finite(viewState.zoom, 0)}
-                          min={-3} max={6} step={0.1} color="#3a8fdc"
-                          onChange={(z) => setViewState((vs) => ({ ...vs, zoom: Math.max(-3, Math.min(6, z)) }))} />
+
+            {/* Row 4 — Target X + Y + Z tall sliders */}
+            {show('gizmo') && (
+              <div style={sliderRowStyle}>
+                <TallSlider label="X" value={finite(viewState.target?.[0], 0)}
+                            min={-2000} max={2000} step={5} color="#d04a3a"
+                            valueFmt={(v) => Math.round(v)}
+                            onChange={(x) => setViewState((vs) => {
+                              const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
+                              t[0] = x; return { ...vs, target: t };
+                            })} />
+                <TallSlider label="Y" value={finite(viewState.target?.[1], 0)}
+                            min={-2000} max={2000} step={5} color="#3a8f4a"
+                            valueFmt={(v) => Math.round(v)}
+                            onChange={(y) => setViewState((vs) => {
+                              const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
+                              t[1] = y; return { ...vs, target: t };
+                            })} />
+                <TallSlider label="Z" value={finite(viewState.target?.[2], 0)}
+                            min={-100} max={500} step={1} color="#3a6fd0"
+                            valueFmt={(v) => Math.round(v)}
+                            onChange={(z) => setViewState((vs) => {
+                              const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
+                              t[2] = z; return { ...vs, target: t };
+                            })} />
+              </div>
             )}
-            {show('tilt') && (
-              <TallSlider label="Tilt°" value={finite(viewState.rotationX, 55)}
-                          min={0} max={89} step={1} color="#7a6fd0"
-                          valueFmt={(v) => Math.round(v)}
-                          onChange={(p) => setPitch(p)} />
+
+            {/* Row 6 — Hand, Reset, Save photo */}
+            <div style={{ display: 'flex', gap: 5 }}>
+              <button title="hand tool — drag to pan instead of rotate"
+                      onClick={() => setPanMode((p) => !p)}
+                      style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
+                               background: panMode ? '#1a1a1a' : 'rgba(255,255,255,0.92)',
+                               color: panMode ? '#fff' : '#3a342c' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                  <path fill="currentColor" d="M9 11V4.5a1.5 1.5 0 0 1 3 0V11h.5V3.5a1.5 1.5 0 0 1 3 0V11h.5V5.5a1.5 1.5 0 0 1 3 0v8.4c0 4.36-3.14 7.6-7.5 7.6-3.5 0-5.13-1.96-6.7-4.55l-1.74-2.86a1.5 1.5 0 0 1 2.45-1.72L6.5 14V6.5a1.5 1.5 0 0 1 3 0V11Z"/>
+                </svg>
+              </button>
+              <button title="reset camera to default view"
+                      onClick={resetCamera}
+                      style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                  <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        d="M20 11A8 8 0 1 0 6.3 17.7M20 4v6h-6"/>
+                </svg>
+              </button>
+              <button title={photoIncludeUi ? 'save PNG of current view (incl. UI)' : 'save PNG of current view (no UI)'}
+                      onClick={savePhoto}
+                      style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                  <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        d="M3 8h3l2-3h8l2 3h3v12H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Row 7 — Save view (named camera bookmark) + Save settings */}
+            {show('save') && (
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <button onClick={saveCurrentView}
+                        title="bookmark the current camera position (X, Y, Z, tilt, zoom, rotation) under a name"
+                        style={{ ...btn, padding: '5px 8px', fontSize: 11,
+                                 background: '#fff', color: '#3a342c' }}>
+                  Save view
+                </button>
+                <SaveButton dirty={dirty} save={save} />
+              </div>
             )}
           </div>
-        )}
-
-        {/* Row 3 — Gizmo3D (visual XYZ orientation indicator) */}
-        {show('gizmo') && (
-          <Gizmo3D bearing={finite(viewState.rotationOrbit, 0)} pitch={finite(viewState.rotationX, 55)}
-                   onSet={({ bearing, pitch }) => setViewState((v) => ({
-                     ...v,
-                     rotationOrbit: bearing != null ? bearing : v.rotationOrbit,
-                     rotationX: pitch != null ? clampX(pitch) : v.rotationX,
-                   }))} />
-        )}
-
-        {/* Row 4 — Target X + Y + Z tall sliders */}
-        {show('gizmo') && (
-          <div style={{ display: 'flex', gap: 1, alignItems: 'stretch',
-                        flex: 1, minHeight: 0, width: 108 }}>
-            <TallSlider label="X" value={finite(viewState.target?.[0], 0)}
-                        min={-2000} max={2000} step={5} color="#d04a3a"
-                        valueFmt={(v) => Math.round(v)}
-                        onChange={(x) => setViewState((vs) => {
-                          const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
-                          t[0] = x; return { ...vs, target: t };
-                        })} />
-            <TallSlider label="Y" value={finite(viewState.target?.[1], 0)}
-                        min={-2000} max={2000} step={5} color="#3a8f4a"
-                        valueFmt={(v) => Math.round(v)}
-                        onChange={(y) => setViewState((vs) => {
-                          const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
-                          t[1] = y; return { ...vs, target: t };
-                        })} />
-            <TallSlider label="Z" value={finite(viewState.target?.[2], 0)}
-                        min={-100} max={500} step={1} color="#3a6fd0"
-                        valueFmt={(v) => Math.round(v)}
-                        onChange={(z) => setViewState((vs) => {
-                          const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
-                          t[2] = z; return { ...vs, target: t };
-                        })} />
-          </div>
-        )}
-
-        {/* Row 6 — Hand, Reset, Save photo */}
-        <div style={{ display: 'flex', gap: 5 }}>
-          <button title="hand tool — drag to pan instead of rotate"
-                  onClick={() => setPanMode((p) => !p)}
-                  style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
-                           background: panMode ? '#1a1a1a' : 'rgba(255,255,255,0.92)',
-                           color: panMode ? '#fff' : '#3a342c' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
-              <path fill="currentColor" d="M9 11V4.5a1.5 1.5 0 0 1 3 0V11h.5V3.5a1.5 1.5 0 0 1 3 0V11h.5V5.5a1.5 1.5 0 0 1 3 0v8.4c0 4.36-3.14 7.6-7.5 7.6-3.5 0-5.13-1.96-6.7-4.55l-1.74-2.86a1.5 1.5 0 0 1 2.45-1.72L6.5 14V6.5a1.5 1.5 0 0 1 3 0V11Z"/>
-            </svg>
-          </button>
-          <button title="reset camera to default view"
-                  onClick={resetCamera}
-                  style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
-              <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                    d="M20 11A8 8 0 1 0 6.3 17.7M20 4v6h-6"/>
-            </svg>
-          </button>
-          <button title={photoIncludeUi ? 'save PNG of current view (incl. UI)' : 'save PNG of current view (no UI)'}
-                  onClick={savePhoto}
-                  style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
-              <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                    d="M3 8h3l2-3h8l2 3h3v12H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Row 7 — Save view (named camera bookmark) + Save settings */}
-        {show('save') && (
-          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-            <button onClick={saveCurrentView}
-                    title="bookmark the current camera position (X, Y, Z, tilt, zoom, rotation) under a name"
-                    style={{ ...btn, padding: '5px 8px', fontSize: 11,
-                             background: '#fff', color: '#3a342c' }}>
-              Save view
-            </button>
-            <SaveButton dirty={dirty} save={save} />
-          </div>
-        )}
-      </div>
+        );
+        return inPortal ? createPortal(stack, controlsTarget) : stack;
+      })()}
     </div>
   );
 }
