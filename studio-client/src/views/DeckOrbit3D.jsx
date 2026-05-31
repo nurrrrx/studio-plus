@@ -4,7 +4,7 @@
 // pinned to the ground, hidden while you're rotating and re-shown when idle.
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import DeckGL from '@deck.gl/react';
-import { COORDINATE_SYSTEM, OrbitView, LightingEffect, AmbientLight, DirectionalLight } from '@deck.gl/core';
+import { COORDINATE_SYSTEM, OrbitView, OrthographicView, LightingEffect, AmbientLight, DirectionalLight } from '@deck.gl/core';
 import { PolygonLayer, PathLayer, BitmapLayer, TextLayer, IconLayer, ScatterplotLayer } from '@deck.gl/layers';
 import { colorForFloors, UNKNOWN_COLOR, siteBasemap, basemapImage, shapeRingMeters } from '../geo.js';
 
@@ -181,6 +181,10 @@ const pip = (p, ring) => {
   return inside;
 };
 const view = new OrbitView({ orbitAxis: 'Z', fov: 50 });
+// Used only while the user is mid-drawing a polygon / path. Pure 2D
+// top-down with no perspective foreshortening, so click pixel <-> world
+// XY is bijective — every vertex lands exactly under the cursor.
+const orthoView = new OrthographicView({ flipY: false });
 // High-ambient lighting so picked colours (especially white) render at full
 // brightness, not greyed-out by directional shading. A faint directional light
 // keeps a hint of 3D form on the building sides.
@@ -464,27 +468,16 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     };
   }, []);
 
-  // Polygon / path drawing only feels "pixel-perfect" when the camera is
-  // looking straight down — otherwise the click ray passes through
-  // buildings and lands on the ground further from the camera, so the
-  // dot APPEARS offset from the cursor even though the math is right. We
-  // snap pitch to top-down the moment a drawing mode starts and restore
-  // it when the user finishes / cancels. In this OrbitView (axis Z) a
-  // HIGHER rotationX = more top-down; the camera clamp caps at 89.
-  const prePolyPitchRef = useRef(null);
-  useEffect(() => {
-    const drawing = fillMode === 'drawing'
+  // Polygon / path drawing only feels "pixel-perfect" in a true 2D
+  // (orthographic) projection — any perspective view has parallax
+  // between the click ray and the rendered ground point. So while the
+  // user is drawing we swap the active view to an OrthographicView
+  // (declared at module scope below). Click ↔ world ↔ click is exact
+  // identity in ortho mode regardless of zoom/pan.
+  const isDrawing = fillMode === 'drawing'
                     || placeMode === 'bikelane'
                     || (placeMode && PROP_META[placeMode]?.polygon);
-    if (drawing && prePolyPitchRef.current == null) {
-      prePolyPitchRef.current = viewRef.current?.rotationX ?? 55;
-      setViewState((v) => ({ ...v, rotationX: 89 }));
-    } else if (!drawing && prePolyPitchRef.current != null) {
-      const restore = prePolyPitchRef.current;
-      prePolyPitchRef.current = null;
-      setViewState((v) => ({ ...v, rotationX: restore }));
-    }
-  }, [fillMode, placeMode]);
+  const activeView = isDrawing ? orthoView : view;
 
   // Box-select drag: while boxSelect is on, mousedown anywhere in the canvas
   // (other than on the box-select UI itself) starts a screen-space rectangle.
@@ -893,7 +886,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const height = wrap?.clientHeight ?? 0;
       if (width && height) {
         try {
-          const vp = view.makeViewport({ width, height, viewState });
+          const vp = activeView.makeViewport({ width, height, viewState });
           const w = vp.unproject([info.x, info.y], { targetZ: surfaceZ });
           return [w[0], w[1], surfaceZ];
         } catch {}
@@ -923,11 +916,12 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     const height = wrap?.clientHeight ?? 0;
     if (!width || !height) return null;
     try {
-      const vp = view.makeViewport({ width, height, viewState });
+      const vp = activeView.makeViewport({ width, height, viewState });
       const s = vp.project([x, y, surfaceZ]);
       return [s[0], s[1]];
     } catch { return null; }
   };
+
 
   // Validate that pos doesn't intersect a building or road, if the toggle is
   // on. Flat props (floor tiles) skip the road check because they sit BELOW
@@ -2086,7 +2080,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                   : selectMode ? 'pointer'
                   : fillMode === 'drawing' ? 'crosshair'
                   : panMode ? 'grab' : 'default' }}>
-      <DeckGL ref={deckRef} views={view}
+      <DeckGL ref={deckRef} views={activeView}
               controller={{
                 scrollZoom: false,
                 // While box-select is active, the canvas drag belongs to us
@@ -2101,7 +2095,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               }}
               effects={[flatLighting]}
               viewState={viewState}
-              onViewStateChange={({ viewState: vs }) => setViewState({ ...vs, rotationX: clampX(vs.rotationX) })}
+              onViewStateChange={({ viewState: vs }) => setViewState((cur) => ({
+                ...cur, ...vs,
+                // OrthographicView's viewState doesn't carry rotation — keep
+                // whatever was last in cur so we restore the same camera when
+                // we swap back to OrbitView after drawing.
+                rotationX: clampX(vs.rotationX ?? cur.rotationX ?? 55),
+                rotationOrbit: vs.rotationOrbit ?? cur.rotationOrbit ?? 0,
+              }))}
               onInteractionStateChange={(s) => setInteracting(!!(s.isDragging || s.isPanning || s.isRotating || s.isZooming))}
               onHover={(info) => {
                 if (fillMode === 'drawing' || placeMode === 'bikelane') {
