@@ -882,13 +882,22 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     // creates a visible offset because horizontally the roof-XY and ground-
     // XY are different along an angled ray. vp.unproject with targetZ does
     // the ray/plane intersection correctly.
-    const deck = deckRef.current?.deck;
-    const vp = deck?.getViewports?.()[0];
-    if (vp && info?.x != null && info?.y != null) {
-      try {
-        const w = vp.unproject([info.x, info.y], { targetZ: surfaceZ });
-        return [w[0], w[1], surfaceZ];
-      } catch {}
+    //
+    // Build the viewport from the current React viewState rather than
+    // reading deckRef's cached one — that way every unproject here is
+    // guaranteed to use the same matrix as projectToScreen below, so the
+    // round-trip is exact identity.
+    if (info?.x != null && info?.y != null) {
+      const wrap = wrapRef.current;
+      const width = wrap?.clientWidth ?? 0;
+      const height = wrap?.clientHeight ?? 0;
+      if (width && height) {
+        try {
+          const vp = view.makeViewport({ width, height, viewState });
+          const w = vp.unproject([info.x, info.y], { targetZ: surfaceZ });
+          return [w[0], w[1], surfaceZ];
+        } catch {}
+      }
     }
     // Last-resort fallback for clicks where x/y are missing (rare).
     if (info?.coordinate) return [info.coordinate[0], info.coordinate[1], surfaceZ];
@@ -899,12 +908,25 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // glued to the cursor — vp.unproject ↔ vp.project is a round-trip
   // identity, so a vertex always renders exactly at the pixel the user
   // clicked, and updates as they orbit / zoom.
+  //
+  // We DON'T read deckRef.current.deck.getViewports()[0] here: deck.gl
+  // updates that viewport on its own rAF after React commits, so during
+  // a frame triggered by setViewState the cached viewport is still on
+  // the previous camera matrix. The result is a small error per frame
+  // that scales with the angular distance from the orbit centre — i.e.
+  // the more the user pans / zooms, the further off the SVG dots drift.
+  // Building a viewport from the current viewState every render keeps
+  // the projection in lock-step with React state.
   const projectToScreen = (x, y) => {
-    const deck = deckRef.current?.deck;
-    const vp = deck?.getViewports?.()[0];
-    if (!vp) return null;
-    try { const s = vp.project([x, y, surfaceZ]); return [s[0], s[1]]; }
-    catch { return null; }
+    const wrap = wrapRef.current;
+    const width = wrap?.clientWidth ?? 0;
+    const height = wrap?.clientHeight ?? 0;
+    if (!width || !height) return null;
+    try {
+      const vp = view.makeViewport({ width, height, viewState });
+      const s = vp.project([x, y, surfaceZ]);
+      return [s[0], s[1]];
+    } catch { return null; }
   };
 
   // Validate that pos doesn't intersect a building or road, if the toggle is
