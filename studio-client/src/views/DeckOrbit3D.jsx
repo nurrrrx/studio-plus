@@ -300,6 +300,11 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     waitSec: 2,
   });
   const flyAbortRef = useRef(null);   // call to cancel an active tour
+  // Named camera bookmarks — Save view button stores {id, name, target,
+  // rotationOrbit, rotationX, zoom}. Clicking a row in the Views panel
+  // smoothly applies it; ✏ renames; × deletes. Round-trips through the
+  // standard view-settings save.
+  const [savedViews, setSavedViews] = useState([]);
   // Ref that mirrors viewState so the fly-through animation can read the
   // latest camera without going through React's commit cycle. Starts as
   // null and is filled on the first effect after viewState is created
@@ -1281,7 +1286,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       numbersThrough, bldgFill, bldgLine, podiumFill, roadFill, roofWidth, edgeWidth, explodeGap,
       showTrees, fillCutouts, propsItems, propSizes, propColors, propAvoidIntersect, smartPlace,
       propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons, showLayerNames, layersInFront,
-      photoIncludeUi, flyConfig,
+      photoIncludeUi, flyConfig, savedViews,
       shape, size, basemapStyle,
       archBuildings, archRoads, archBasemap,
     },
@@ -1327,6 +1332,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     if (typeof s.showLayerNames === 'boolean') setShowLayerNames(s.showLayerNames);
     if (typeof s.layersInFront === 'boolean') setLayersInFront(s.layersInFront);
     if (s.flyConfig && typeof s.flyConfig === 'object') setFlyConfig((f) => ({ ...f, ...s.flyConfig }));
+    if (Array.isArray(s.savedViews)) setSavedViews(s.savedViews);
     if (typeof s.photoIncludeUi === 'boolean') setPhotoIncludeUi(s.photoIncludeUi);
     if (typeof s.propAvoidIntersect === 'boolean') setPropAvoidIntersect(s.propAvoidIntersect);
     if (s.smartPlace && typeof s.smartPlace === 'object') setSmartPlace(s.smartPlace);
@@ -2452,6 +2458,44 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     return () => { cancelled = true; setFlyPlaying(false); };
   };
 
+  // Snapshot only the camera fields from the live viewState.
+  const cameraOnly = (vs) => ({
+    rotationOrbit: vs.rotationOrbit,
+    rotationX: vs.rotationX,
+    zoom: vs.zoom,
+    target: Array.isArray(vs.target) ? [vs.target[0], vs.target[1], vs.target[2] ?? 0] : [0, 0, 0],
+  });
+  const saveCurrentView = () => {
+    const name = (typeof window !== 'undefined' && window.prompt('Name this view', `View ${savedViews.length + 1}`)) || '';
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setSavedViews((cur) => [...cur, {
+      id: Math.random().toString(36).slice(2, 10),
+      name: trimmed,
+      ...cameraOnly(viewStateRef.current || viewState),
+    }]);
+  };
+  const applyView = (view) => setViewState((v) => ({
+    ...v,
+    rotationOrbit: Number.isFinite(view.rotationOrbit) ? view.rotationOrbit : v.rotationOrbit,
+    rotationX: clampX(Number.isFinite(view.rotationX) ? view.rotationX : v.rotationX),
+    zoom: Number.isFinite(view.zoom) ? view.zoom : v.zoom,
+    target: Array.isArray(view.target)
+      ? [view.target[0] ?? v.target[0], view.target[1] ?? v.target[1], view.target[2] ?? v.target[2] ?? 0]
+      : v.target,
+  }));
+  const renameView = (id) => {
+    const cur = savedViews.find((v) => v.id === id);
+    if (!cur) return;
+    const next = window.prompt('Rename view', cur.name);
+    const trimmed = next?.trim();
+    if (!trimmed || trimmed === cur.name) return;
+    setSavedViews((vs) => vs.map((v) => v.id === id ? { ...v, name: trimmed } : v));
+  };
+  const deleteView = (id) => {
+    setSavedViews((vs) => vs.filter((v) => v.id !== id));
+  };
+
   const setBearing = (b) => setViewState((v) => ({ ...v, rotationOrbit: b }));
   const setPitch = (p) => setViewState((v) => ({ ...v, rotationX: clampX(p) }));
   const zoom = (f) => setViewState((v) => ({ ...v, zoom: Math.min(6, Math.max(-3, v.zoom + (f > 1 ? 0.3 : -0.3))) }));
@@ -3013,51 +3057,85 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         </div>
       )}
 
-      {/* Compact layer legend in the top-left. Each row is the layer's
-          colour swatch + name. Clicking the row toggles that layer's
-          visibility (l.visible). Sits next to the customisation panel's
-          collapse tab and stays visible whether the big panel is open or
-          collapsed. Hidden when there are no custom layers yet. */}
-      {propLayers.length > 0 && (
+      {/* Top-left stack: clickable Layers legend (toggle visibility) and
+          Saved Views panel (camera bookmarks). Both sit to the right of
+          the Customization panel's collapse tab. Each box is independent
+          and only appears when it has rows to show. */}
+      {(propLayers.length > 0 || savedViews.length > 0) && (
         <div style={{ position: 'absolute',
-                      left: 50,    // clears the customisation collapse-tab on the far left
+                      left: 50,
                       top: 'calc(var(--header-inset, 0px) + 16px)',
                       zIndex: 5,
-                      background: 'rgba(255,255,255,0.94)',
-                      border: '1px solid var(--line)', borderRadius: 6,
-                      padding: '6px 8px', fontSize: 11,
-                      boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
-                      maxWidth: 220,
+                      display: 'flex', flexDirection: 'column', gap: 8,
                       maxHeight: 'calc(100% - var(--header-inset, 0px) - var(--footer-inset, 0px) - 32px)',
-                      overflowY: 'auto' }}
-             onMouseDown={(e) => e.stopPropagation()}>
-          <div style={{ color: '#5e564a', fontWeight: 600, marginBottom: 4,
-                        fontSize: 10, letterSpacing: 0.6 }}>LAYERS</div>
-          {propLayers.map((l, i) => {
-            const defaultColor = ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8];
-            const color = l.color || defaultColor;
-            const visible = l.visible !== false;
-            return (
-              <div key={l.id}
-                   onClick={() => setPropLayers((ls) => ls.map((x) =>
-                     x.id === l.id ? { ...x, visible: !visible } : x))}
-                   style={{ display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '3px 0', cursor: 'pointer',
-                            opacity: visible ? 1 : 0.45, color: '#3a342c',
-                            userSelect: 'none' }}
-                   title={visible ? `Hide ${l.name}` : `Show ${l.name}`}>
-                <span style={{ width: 12, height: 12, borderRadius: 2,
-                               background: color,
-                               border: '1px solid rgba(0,0,0,0.18)',
-                               flexShrink: 0 }} />
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden',
-                               textOverflow: 'ellipsis',
-                               textDecoration: visible ? 'none' : 'line-through' }}>
-                  {l.name || 'Untitled'}
-                </span>
-              </div>
-            );
-          })}
+                      pointerEvents: 'none' }}>
+          {propLayers.length > 0 && (
+            <div style={{ background: 'rgba(255,255,255,0.94)',
+                          border: '1px solid var(--line)', borderRadius: 6,
+                          padding: '6px 8px', fontSize: 11,
+                          boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
+                          maxWidth: 240, overflowY: 'auto', pointerEvents: 'auto' }}
+                 onMouseDown={(e) => e.stopPropagation()}>
+              <div style={{ color: '#5e564a', fontWeight: 600, marginBottom: 4,
+                            fontSize: 10, letterSpacing: 0.6 }}>LAYERS</div>
+              {propLayers.map((l, i) => {
+                const defaultColor = ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8];
+                const color = l.color || defaultColor;
+                const visible = l.visible !== false;
+                return (
+                  <div key={l.id}
+                       onClick={() => setPropLayers((ls) => ls.map((x) =>
+                         x.id === l.id ? { ...x, visible: !visible } : x))}
+                       style={{ display: 'flex', alignItems: 'center', gap: 6,
+                                padding: '3px 0', cursor: 'pointer',
+                                opacity: visible ? 1 : 0.45, color: '#3a342c',
+                                userSelect: 'none' }}
+                       title={visible ? `Hide ${l.name}` : `Show ${l.name}`}>
+                    <span style={{ width: 12, height: 12, borderRadius: 2,
+                                   background: color,
+                                   border: '1px solid rgba(0,0,0,0.18)',
+                                   flexShrink: 0 }} />
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden',
+                                   textOverflow: 'ellipsis',
+                                   textDecoration: visible ? 'none' : 'line-through' }}>
+                      {l.name || 'Untitled'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {savedViews.length > 0 && (
+            <div style={{ background: 'rgba(255,255,255,0.94)',
+                          border: '1px solid var(--line)', borderRadius: 6,
+                          padding: '6px 8px', fontSize: 11,
+                          boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
+                          maxWidth: 240, overflowY: 'auto', pointerEvents: 'auto' }}
+                 onMouseDown={(e) => e.stopPropagation()}>
+              <div style={{ color: '#5e564a', fontWeight: 600, marginBottom: 4,
+                            fontSize: 10, letterSpacing: 0.6 }}>VIEWS</div>
+              {savedViews.map((view) => (
+                <div key={view.id}
+                     style={{ display: 'flex', alignItems: 'center', gap: 4,
+                              padding: '3px 0', color: '#3a342c', userSelect: 'none' }}>
+                  <span onClick={() => applyView(view)}
+                        title={`Apply ${view.name}`}
+                        style={{ flex: 1, cursor: 'pointer', whiteSpace: 'nowrap',
+                                 overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {view.name}
+                  </span>
+                  <button onClick={() => renameView(view.id)} title="rename"
+                          style={{ border: 'none', background: 'transparent',
+                                   cursor: 'pointer', color: '#6f685c', padding: 0,
+                                   fontSize: 12, lineHeight: 1 }}>✎</button>
+                  <button onClick={() => deleteView(view.id)} title="delete"
+                          style={{ border: 'none', background: 'transparent',
+                                   cursor: 'pointer', color: '#b03030', padding: 0,
+                                   fontSize: 13, lineHeight: 1 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -3790,8 +3868,18 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
           </button>
         </div>
 
-        {/* Row 7 — Save settings */}
-        {show('save') && <SaveButton dirty={dirty} save={save} />}
+        {/* Row 7 — Save view (named camera bookmark) + Save settings */}
+        {show('save') && (
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            <button onClick={saveCurrentView}
+                    title="bookmark the current camera position (X, Y, Z, tilt, zoom, rotation) under a name"
+                    style={{ ...btn, padding: '5px 8px', fontSize: 11,
+                             background: '#fff', color: '#3a342c' }}>
+              Save view
+            </button>
+            <SaveButton dirty={dirty} save={save} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3938,18 +4026,48 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
                     textTransform: 'uppercase', fontWeight: 600,
                     textShadow: '0 0 4px rgba(255,255,255,0.9)' }}>{label}</div>
       <HoldButton onStep={() => inc(+1)} title={`${label} +`} style={btnStyle}>+</HoldButton>
+      {/* EQ-style stack of glowing segments. The whole track is a single
+          drag target (cursor Y absolutely maps to value, same as before);
+          each segment is also clickable as a quick way to jump to its
+          level. The indicator line glows at the current value. */}
       <div ref={trackRef} onMouseDown={startDrag} onTouchStart={startDrag}
-           style={{ position: 'relative', width: 18, flex: 1, minHeight: 60,
-                    border: '1px solid #c8c2b3', borderRadius: 6,
-                    background: 'rgba(245,243,237,0.92)', cursor: 'ns-resize',
-                    boxShadow: 'inset 0 0 6px rgba(0,0,0,0.06)',
-                    touchAction: 'none' }}>
-        <div style={{ position: 'absolute', bottom: 0, left: 1, right: 1,
-                      height: `${ratio * 100}%`, background: color, opacity: 0.45,
-                      borderRadius: 5 }} />
-        <div style={{ position: 'absolute', left: -3, right: -3,
+           style={{ position: 'relative', width: 22, flex: 1, minHeight: 70,
+                    border: '1px solid #1c1726', borderRadius: 7,
+                    background: '#0c0a14',
+                    boxShadow: 'inset 0 0 8px rgba(0,0,0,0.55), 0 0 4px rgba(0,0,0,0.25)',
+                    cursor: 'ns-resize',
+                    touchAction: 'none',
+                    padding: '3px 3px',
+                    display: 'flex', flexDirection: 'column-reverse',
+                    gap: 2 }}>
+        {Array.from({ length: 22 }, (_, i) => {
+          // Segment threshold from min (i=0) to max (i=21). Below or equal
+          // to v -> 'on' (glowing), above -> 'off' (dim).
+          const threshold = min + ((i + 1) / 22) * (max - min);
+          const on = v + 1e-9 >= threshold;
+          const dim = `${color}25`; // ~15% alpha hex shorthand-ish (browsers parse)
+          return (
+            <div key={i}
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   // Click a tick -> jump value to that segment's level.
+                   onChange(clamp(min + ((i + 1) / 22) * (max - min)));
+                 }}
+                 style={{ flex: 1, minHeight: 3,
+                          borderRadius: 2,
+                          background: on ? color : dim,
+                          opacity: on ? 0.95 : 0.55,
+                          boxShadow: on ? `0 0 6px ${color}, 0 0 2px ${color}` : 'none',
+                          transition: 'background 70ms ease, box-shadow 70ms ease, opacity 70ms ease' }} />
+          );
+        })}
+        {/* Glowing indicator line at the current value. Sits above the
+            segments so dragging it visually tracks the cursor. */}
+        <div style={{ position: 'absolute', left: -2, right: -2,
                       top: `${(1 - ratio) * 100}%`, transform: 'translateY(-50%)',
-                      height: 5, background: '#26211a', borderRadius: 3 }} />
+                      height: 2, background: '#fff', borderRadius: 2,
+                      boxShadow: `0 0 8px ${color}, 0 0 2px #fff`,
+                      pointerEvents: 'none' }} />
       </div>
       <HoldButton onStep={() => inc(-1)} title={`${label} −`} style={btnStyle}>−</HoldButton>
       <input type="number" step={step}
