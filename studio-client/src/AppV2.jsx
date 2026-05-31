@@ -46,11 +46,6 @@ export default function AppV2() {
           </button>
         </header>
         <main className="v2-main">
-          <div className="v2-card-grid">
-            <CardPlaceholder title="Recent saved views" hint="Pulls from the orbit settings' savedViews array" />
-            <CardPlaceholder title="Layers" hint="Pavement · Bike lanes · Green corridors · Park · Burjeel" />
-            <CardPlaceholder title="Tour status" hint="Configure + play the camera tour from here" />
-          </div>
           <div className="v2-big-pane">
             <div className="v2-big-pane-text">
               <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>studio+ v2</h2>
