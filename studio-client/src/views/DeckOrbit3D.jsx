@@ -3502,8 +3502,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 
         {/* Row 2 — Rotation + Zoom + Tilt tall sliders */}
         {(show('compass') || show('zoom') || show('tilt')) && (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'stretch',
-                        flex: 1, minHeight: 0, width: 180 }}>
+          <div style={{ display: 'flex', gap: 3, alignItems: 'stretch',
+                        flex: 1, minHeight: 0, width: 132 }}>
             {show('compass') && (
               <TallSlider label="Rot°" value={finite(viewState.rotationOrbit, 0)}
                           min={0} max={360} step={1} wrap color="#dc8a3a"
@@ -3536,8 +3536,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 
         {/* Row 4 — Target X + Y + Z tall sliders */}
         {show('gizmo') && (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'stretch',
-                        flex: 1, minHeight: 0, width: 180 }}>
+          <div style={{ display: 'flex', gap: 3, alignItems: 'stretch',
+                        flex: 1, minHeight: 0, width: 132 }}>
             <TallSlider label="X" value={finite(viewState.target?.[0], 0)}
                         min={-2000} max={2000} step={5} color="#d04a3a"
                         valueFmt={(v) => Math.round(v)}
@@ -3760,7 +3760,7 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
                if (Number.isFinite(n)) onChange(clamp(n));
              }}
              onWheel={(e) => e.currentTarget.blur()}
-             style={{ width: 50, fontSize: 10, padding: '1px 2px', textAlign: 'center',
+             style={{ width: 38, fontSize: 10, padding: '1px 1px', textAlign: 'center',
                       border: '1px solid #c8c2b3', borderRadius: 3 }} />
     </div>
   );
