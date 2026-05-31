@@ -185,6 +185,40 @@ const convexHull = (pts) => {
   return lower.concat(upper.slice(1, -1));
 };
 
+// Minimum-area rotated bounding rectangle. Uses the standard
+// rotating-calipers idea: for every edge of the convex hull, rotate the
+// hull so that edge is axis-aligned, take the axis-aligned bounding box,
+// and keep whichever rotation produces the smallest area. Returns the 4
+// corners of the rectangle in world coordinates.
+const minAreaRect = (pts) => {
+  if (!pts || pts.length === 0) return null;
+  const hull = convexHull(pts);
+  if (hull.length < 2) {
+    const [x, y] = hull[0] || [0, 0];
+    return [[x, y], [x, y], [x, y], [x, y]];
+  }
+  let best = null;
+  for (let i = 0; i < hull.length; i++) {
+    const [x1, y1] = hull[i];
+    const [x2, y2] = hull[(i + 1) % hull.length];
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const c = Math.cos(-angle), s = Math.sin(-angle);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of hull) {
+      const rx = x * c - y * s, ry = x * s + y * c;
+      if (rx < minX) minX = rx; if (ry < minY) minY = ry;
+      if (rx > maxX) maxX = rx; if (ry > maxY) maxY = ry;
+    }
+    const area = (maxX - minX) * (maxY - minY);
+    if (!best || area < best.area) best = { area, angle, minX, minY, maxX, maxY };
+  }
+  // Build the rectangle corners back in world space (rotate by +angle).
+  const { angle, minX, minY, maxX, maxY } = best;
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]]
+    .map(([rx, ry]) => [rx * c - ry * s, rx * s + ry * c]);
+};
+
 // Standard ray-cast point-in-polygon. Used by tree scatter + prop intersect.
 const pip = (p, ring) => {
   let inside = false;
@@ -795,57 +829,60 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     return !l || l.visible !== false;
   };
 
-  // Per-layer slab geometry. A single axis-aligned rectangle that wraps
-  // every prop position (plus, if Configure-fill produced one, the saved
-  // polygon's vertices) — extended slightly outward by the largest prop
-  // footprint in the layer so the slab snugly covers the props' actual
-  // bounds, not just their centre points. One clean rectangle per layer,
-  // no chain-of-discs artifacts.
+  // Single site-wide rectangle reused as the slab outline for EVERY
+  // layer (and the ground plane below). Tightest oriented rectangle
+  // wrapping the AOI polygon — falls back to the union of building
+  // footprints if no AOI is loaded. Computed once; every layer's slab is
+  // the same shape stacked at its own altitude (see the diagram the user
+  // sketched).
+  const siteRect = useMemo(() => {
+    const pts = [];
+    if (geo.aoi && geo.aoi[0]) {
+      for (const v of geo.aoi[0]) if (Array.isArray(v)) pts.push([v[0], v[1]]);
+    } else if (geo.buildings && geo.buildings.length) {
+      for (const b of geo.buildings) {
+        const rings = b.rings || (b.ring ? [b.ring] : []);
+        for (const ring of rings) for (const v of ring) if (Array.isArray(v)) pts.push([v[0], v[1]]);
+      }
+    }
+    if (pts.length === 0) return null;
+    return minAreaRect(pts);
+  }, [geo]);
+
+  // Per-layer slab geometry. Each layer reuses the site-wide rectangle so
+  // all slabs stack as identical footprints (one shape, copied per
+  // layer). Label centroid is still computed per-layer from the props in
+  // it, so each layer name stays in its own spot.
   const layerHulls = useMemo(() => {
+    if (!siteRect) return [];
     return propLayers.map((layer) => {
       if (layer.visible === false) return null;
       const items = propsItems.filter((p) => p.layerId === layer.id);
       const hasSavedPolygon = Array.isArray(layer.polygon) && layer.polygon.length >= 3;
       if (items.length === 0 && !hasSavedPolygon) return null;
-      // Collect every (x, y) the slab needs to wrap.
-      const pts = [];
-      let maxFootprint = 4; // metres, for outward padding
+      // Label centroid: average of all prop positions in this layer so
+      // each layer's name still labels its own content. Falls back to
+      // the site-rectangle centroid if the layer has only a saved
+      // polygon and no placed props yet.
+      let cx = 0, cy = 0, n = 0;
       for (const p of items) {
-        const meta = PROP_META[p.type] || {};
-        const o = propSizes[p.type] || {};
-        const inst = p.instanceSize || {};
-        const heightM = inst.h ?? o.h ?? meta.size ?? 4;
-        const widthM  = inst.w ?? o.w ?? (heightM * (meta.w && meta.h ? meta.w / meta.h : 1));
-        if (Number.isFinite(widthM) && Number.isFinite(heightM)) {
-          maxFootprint = Math.max(maxFootprint, Math.max(widthM, heightM));
-        }
-        if (Array.isArray(p.position)) pts.push([p.position[0], p.position[1]]);
-        else if (Array.isArray(p.path)) for (const v of p.path) if (Array.isArray(v)) pts.push([v[0], v[1]]);
-        else if (Array.isArray(p.polygon)) for (const v of p.polygon) if (Array.isArray(v)) pts.push([v[0], v[1]]);
+        if (Array.isArray(p.position)) { cx += p.position[0]; cy += p.position[1]; n++; }
+        else if (Array.isArray(p.path) && p.path[0]) { cx += p.path[0][0]; cy += p.path[0][1]; n++; }
+        else if (Array.isArray(p.polygon) && p.polygon[0]) { cx += p.polygon[0][0]; cy += p.polygon[0][1]; n++; }
       }
-      if (hasSavedPolygon) for (const v of layer.polygon) if (Array.isArray(v)) pts.push([v[0], v[1]]);
-      if (pts.length === 0) return null;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const [x, y] of pts) {
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (n === 0) {
+        for (const [x, y] of siteRect) { cx += x; cy += y; }
+        n = siteRect.length;
       }
-      // Pad by half the largest prop footprint (+ a small fudge) so the
-      // rectangle covers each prop's full extent, not just its centre.
-      const pad = maxFootprint * 0.55 + 1;
-      const polygon = [
-        [minX - pad, minY - pad],
-        [maxX + pad, minY - pad],
-        [maxX + pad, maxY + pad],
-        [minX - pad, maxY + pad],
-      ];
-      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+      cx /= n; cy /= n;
       return {
         id: layer.id, name: layer.name,
-        polygon, centroid: [cx, cy], count: items.length,
+        // Same shape (the site rectangle) for every layer — see siteRect.
+        polygon: siteRect.map(([x, y]) => [x, y]),
+        centroid: [cx, cy], count: items.length,
       };
     }).filter(Boolean);
-  }, [propLayers, propsItems, propSizes]);
+  }, [propLayers, propsItems, siteRect]);
 
   // Tinted icon URLs derived from propColors. We bake the picked colour into
   // the SVG fill instead of relying on IconLayer.getColor (which only applies
