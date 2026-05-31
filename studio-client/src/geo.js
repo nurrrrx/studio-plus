@@ -81,11 +81,17 @@ function heightFromProps(props) {
   return f * FLOOR_H + (props.large_ground_floor ? GROUND_H : 0);
 }
 
+// Resolve a data path against Vite's BASE_URL so the same code works
+// from any route (/studio-plus/, /studio-plus/v2/, /studio-plus/v2/alzeina/,
+// etc.). Without this, the fetches resolve relative to the current URL
+// and hit 404 from any sub-route, leaving the canvas stuck on 'Loading…'.
+const D = (p) => `${import.meta.env.BASE_URL || '/'}${p}`;
+
 export async function loadGeo() {
   const [b, r, a] = await Promise.all([
-    fetchFirst(['data/alzeina-buildings.geojson', 'data/buildings_edited.geojson', 'data/buildings.geojson']),
-    fetchFirst(['data/alzeina-roads.geojson', 'data/streets_edited.geojson', 'data/streets.geojson']),
-    fetchFirst(['data/al_zeina_aoi.geojson']).catch(() => null),
+    fetchFirst([D('data/alzeina-buildings.geojson'), D('data/buildings_edited.geojson'), D('data/buildings.geojson')]),
+    fetchFirst([D('data/alzeina-roads.geojson'), D('data/streets_edited.geojson'), D('data/streets.geojson')]),
+    fetchFirst([D('data/al_zeina_aoi.geojson')]).catch(() => null),
   ]);
 
   // reference = mean of all building vertices
@@ -227,8 +233,11 @@ export function maskFeature(center, shape, p, mLon, mLat) {
   return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [outer, shapeRing(center, shape, p, mLon, mLat)] } };
 }
 
-// Mapbox (public token from the user's other project). Standard streets style.
-export const MAPBOX_TOKEN = 'pk.eyJ1IjoibnVycnJyeCIsImEiOiJjbW1vM3Z4aWwwYTFjMnNxeG1qbGE5bjlnIn0.pgtbukf2YiUPV_wWR0pC4g';
+// Mapbox public token. Read from VITE_MAPBOX_TOKEN at build time so the
+// secret-scanner doesn't trip on every commit that touches this file.
+// Set the value in GitHub Actions repo Variables (or in studio-client/
+// .env.local for dev). When empty, basemap features just no-op.
+export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 // Build a Mapbox Static-Images basemap that exactly spans the site, and return
 // its placement in the shared local-metre frame (so views can drop it behind

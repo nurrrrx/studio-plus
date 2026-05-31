@@ -26,8 +26,10 @@ export default function DeckMap({ geo }) {
   const [rd, setRd] = useState(null);
 
   useEffect(() => {
-    fetch('data/alzeina-buildings.geojson').then((r) => r.json()).then((d) => setBldg(notCutout(d))).catch(() => {});
-    fetch('data/alzeina-roads.geojson').then((r) => r.json()).then((d) => setRd(notCutout(d))).catch(() => {});
+    // Prefix with Vite's BASE_URL so the fetches work from any sub-route.
+    const D = import.meta.env.BASE_URL || '/';
+    fetch(`${D}data/alzeina-buildings.geojson`).then((r) => r.json()).then((d) => setBldg(notCutout(d))).catch(() => {});
+    fetch(`${D}data/alzeina-roads.geojson`).then((r) => r.json()).then((d) => setRd(notCutout(d))).catch(() => {});
   }, []);
 
   const { dirty, save } = useViewSettings('deck',
