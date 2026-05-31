@@ -286,6 +286,24 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // Fly-through (camera tour) state — see the Play sequence below.
+  const [flyOpen, setFlyOpen] = useState(false);
+  const [flyPlaying, setFlyPlaying] = useState(false);
+  const [flyConfig, setFlyConfig] = useState({
+    minTilt: 25, optTilt: 55, maxTilt: 85,
+    tiltSpeed: 18,      // deg / sec
+    rotSpeed: 36,       // deg / sec (one full 360 in 10s by default)
+    expandedZoom: 0.4,
+    collapsedZoom: 1.6,
+    collapseAtMaxTilt: false,
+    waitSec: 2,
+  });
+  const flyAbortRef = useRef(null);   // call to cancel an active tour
+  // Refs that mirror state so the animation can read the latest values
+  // without going through React's commit cycle.
+  const viewStateRef = useRef(viewState);
+  useEffect(() => { viewStateRef.current = viewState; }, [viewState]);
   const [placeMode, setPlaceMode] = useState(null); // null or 'tree'|'person'|'lamp'|'car'|'table'
   const [deleteMode, setDeleteMode] = useState(false); // toggle: click any prop to remove
   const [moveMode, setMoveMode] = useState(false);     // toggle: click prop to pick up, click anywhere to drop
@@ -393,7 +411,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
       let worldBefore;
       try { worldBefore = vp.unproject([cx, cy]); } catch { return; }
-      const dz = -e.deltaY * 0.02; // pinch delta (ctrlKey-wheel events are smaller)
+      const dz = -e.deltaY * 0.01; // pinch delta — halved (was 0.02) so each tick moves ~0.10 zoom instead of ~0.20
       setViewState((v) => {
         const newZoom = Math.max(-3, Math.min(6, v.zoom + dz));
         // After zoom changes, the cursor must stay over the same world point.
@@ -1257,7 +1275,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       numbersThrough, bldgFill, bldgLine, podiumFill, roadFill, roofWidth, edgeWidth, explodeGap,
       showTrees, fillCutouts, propsItems, propSizes, propColors, propAvoidIntersect, smartPlace,
       propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons, showLayerNames, layersInFront,
-      photoIncludeUi,
+      photoIncludeUi, flyConfig,
       shape, size, basemapStyle,
       archBuildings, archRoads, archBasemap,
     },
@@ -1302,6 +1320,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     if (typeof s.showLayerPolygons === 'boolean') setShowLayerPolygons(s.showLayerPolygons);
     if (typeof s.showLayerNames === 'boolean') setShowLayerNames(s.showLayerNames);
     if (typeof s.layersInFront === 'boolean') setLayersInFront(s.layersInFront);
+    if (s.flyConfig && typeof s.flyConfig === 'object') setFlyConfig((f) => ({ ...f, ...s.flyConfig }));
     if (typeof s.photoIncludeUi === 'boolean') setPhotoIncludeUi(s.photoIncludeUi);
     if (typeof s.propAvoidIntersect === 'boolean') setPropAvoidIntersect(s.propAvoidIntersect);
     if (s.smartPlace && typeof s.smartPlace === 'object') setSmartPlace(s.smartPlace);
@@ -2345,6 +2364,88 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   }
 
   const clampX = (x) => Math.max(0, Math.min(89, x));        // never go underground
+  // Run the camera tour described in the FlyThroughPanel. Each phase
+  // either applies an instant state change (showLayerPolygons toggle,
+  // layersExploded toggle, …) or smoothly interpolates viewState fields
+  // over `durationMs`. The runner uses rAF directly so the camera moves
+  // independently of React's commit cycle. Returns a cancel function.
+  const runFlyThrough = (cfg) => {
+    let cancelled = false;
+    const wait = cfg.waitSec * 1000;
+    const easeIn  = (t) => t * t;
+    const easeOut = (t) => 1 - (1 - t) * (1 - t);
+    const easeInOut = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const tiltDuration = (a, b) => Math.max(200, Math.abs(b - a) / Math.max(1, cfg.tiltSpeed) * 1000);
+    const phases = [
+      { name: 'init', instant: true, onEnter: () => {
+        setLayersExploded(false);
+        setShowLayerPolygons(false);
+        setShowLayerNames(false);
+        setViewState((v) => ({ ...v, rotationX: clampX(cfg.optTilt), zoom: cfg.collapsedZoom }));
+      }},
+      { name: 'wait1', durationMs: wait },
+      { name: 'expand', durationMs: 1800, onEnter: () => {
+        setLayersExploded(true);
+        setShowLayerPolygons(true);
+        setShowLayerNames(true);
+      }, target: () => ({ rotationX: clampX(cfg.minTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
+      { name: 'min->opt', durationMs: tiltDuration(cfg.minTilt, cfg.optTilt),
+        target: () => ({ rotationX: clampX(cfg.optTilt) }), ease: easeInOut },
+      { name: 'hold_opt', durationMs: wait },
+      { name: 'opt->max', durationMs: tiltDuration(cfg.optTilt, cfg.maxTilt),
+        target: () => ({ rotationX: clampX(cfg.maxTilt) }), ease: easeInOut },
+      { name: 'hold_max', durationMs: wait },
+      { name: 'hide_colors', durationMs: wait, onEnter: () => {
+        setShowLayerPolygons(false);
+        setShowLayerNames(false);
+        if (cfg.collapseAtMaxTilt) setLayersExploded(false);
+      }},
+      { name: 'max->opt', durationMs: tiltDuration(cfg.maxTilt, cfg.optTilt), onEnter: () => {
+        setShowLayerPolygons(true);
+        setShowLayerNames(true);
+        if (cfg.collapseAtMaxTilt) setLayersExploded(true);
+      }, target: () => ({ rotationX: clampX(cfg.optTilt) }), ease: easeInOut },
+      { name: 'rotate_360', durationMs: Math.max(300, 360 / Math.max(1, cfg.rotSpeed) * 1000),
+        relTarget: (s) => ({ rotationOrbit: (Number.isFinite(s.rotationOrbit) ? s.rotationOrbit : 0) + 360 }),
+        ease: easeOut },
+      { name: 'done', instant: true, onEnter: () => { setFlyPlaying(false); } },
+    ];
+    let i = 0, startMs = 0, fromVS = null, targetVS = null;
+    const step = (now) => {
+      if (cancelled) return;
+      if (i >= phases.length) { setFlyPlaying(false); return; }
+      const p = phases[i];
+      if (startMs === 0) {
+        startMs = now;
+        if (p.onEnter) p.onEnter();
+        if (p.instant) { i++; startMs = 0; requestAnimationFrame(step); return; }
+        // Snapshot the start state and compute the absolute target for
+        // this phase (target() may run after onEnter has changed state).
+        fromVS = { ...viewStateRef.current };
+        const t = p.target ? p.target() : (p.relTarget ? p.relTarget(fromVS) : null);
+        targetVS = t;
+      }
+      const dur = p.durationMs || 0;
+      const tNorm = dur > 0 ? Math.min(1, (now - startMs) / dur) : 1;
+      const e = p.ease ? p.ease(tNorm) : tNorm;
+      if (targetVS) {
+        const next = { ...fromVS };
+        for (const k of Object.keys(targetVS)) {
+          const a = Number.isFinite(fromVS[k]) ? fromVS[k] : 0;
+          const b = Number.isFinite(targetVS[k]) ? targetVS[k] : a;
+          next[k] = a + (b - a) * e;
+        }
+        if ('rotationX' in next) next.rotationX = clampX(next.rotationX);
+        setViewState((v) => ({ ...v, ...next }));
+      }
+      if (tNorm >= 1) { i++; startMs = 0; }
+      requestAnimationFrame(step);
+    };
+    setFlyPlaying(true);
+    requestAnimationFrame(step);
+    return () => { cancelled = true; setFlyPlaying(false); };
+  };
+
   const setBearing = (b) => setViewState((v) => ({ ...v, rotationOrbit: b }));
   const setPitch = (p) => setViewState((v) => ({ ...v, rotationX: clampX(p) }));
   const zoom = (f) => setViewState((v) => ({ ...v, zoom: Math.min(6, Math.max(-3, v.zoom + (f > 1 ? 0.3 : -0.3))) }));
@@ -3561,6 +3662,21 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         </LayersPanel>
       )}
       {show('legend') && <Legend geo={geo} />}
+      {/* Camera-tour (fly-through) panel — slides in from the right edge.
+          Collapsed = a slim vertical tab on the right; expanded = a wide
+          drawer with the configurable parameters and a Play button. */}
+      <FlyThroughPanel open={flyOpen} setOpen={setFlyOpen}
+                       config={flyConfig} setConfig={setFlyConfig}
+                       playing={flyPlaying}
+                       onPlay={() => {
+                         if (flyAbortRef.current) flyAbortRef.current();
+                         flyAbortRef.current = runFlyThrough(flyConfig);
+                       }}
+                       onStop={() => {
+                         if (flyAbortRef.current) flyAbortRef.current();
+                         flyAbortRef.current = null;
+                       }} />
+
       {/* Full-height right-hand control stack. Top → bottom:
             (1) Compass   (2) Rotation + Zoom tall sliders
             (3) Gizmo3D   (4) Target X + Y tall sliders   (5) Target Z tall slider
@@ -3839,6 +3955,105 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
              onWheel={(e) => e.currentTarget.blur()}
              style={{ width: 32, fontSize: 10, padding: '1px 1px', textAlign: 'center',
                       border: '1px solid #c8c2b3', borderRadius: 3 }} />
+    </div>
+  );
+}
+
+// Slide-in drawer from the right edge with the camera-tour controls.
+// Collapsed = a slim ▶ tab on the right; expanded = a 240 px drawer
+// with each tour parameter as an editable number, the collapse-on-max-
+// tilt checkbox, and a Play / Stop button.
+function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, onStop }) {
+  const upd = (patch) => setConfig((c) => ({ ...c, ...patch }));
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} title="camera tour"
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{ position: 'absolute', right: 0, top: 'calc(var(--header-inset, 0px) + 60px)',
+                       zIndex: 7, background: 'rgba(255,255,255,0.94)',
+                       border: '1px solid var(--line)', borderRight: 'none',
+                       borderRadius: '6px 0 0 6px', padding: '8px 7px',
+                       cursor: 'pointer', color: '#3a342c',
+                       boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
+                       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                       fontSize: 14, lineHeight: 1, userSelect: 'none' }}>
+        <span style={{ fontWeight: 700 }}>▶</span>
+        <span style={{ writingMode: 'vertical-rl', textOrientation: 'mixed',
+                       fontSize: 9, letterSpacing: 1.4, textTransform: 'uppercase',
+                       color: '#5e564a', fontWeight: 600 }}>Tour</span>
+      </button>
+    );
+  }
+  const numRow = (label, key, min, max, step, suffix) => (
+    <label style={{ display: 'flex', justifyContent: 'space-between',
+                    alignItems: 'center', gap: 8, fontSize: 12,
+                    padding: '3px 0', color: '#3a342c' }}>
+      <span>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <input type="number" step={step} min={min} max={max}
+               value={config[key] ?? ''}
+               onChange={(e) => upd({ [key]: Number(e.target.value) })}
+               style={{ width: 64, fontSize: 12, padding: '2px 4px', textAlign: 'right',
+                        border: '1px solid var(--line)', borderRadius: 3 }} />
+        {suffix && <span style={{ color: '#6f685c', fontSize: 11 }}>{suffix}</span>}
+      </span>
+    </label>
+  );
+  return (
+    <div style={{ position: 'absolute', right: 0,
+                  top: 'calc(var(--header-inset, 0px) + 16px)',
+                  bottom: 'calc(var(--footer-inset, 0px) + 12px)',
+                  zIndex: 7,
+                  background: 'rgba(255,255,255,0.96)',
+                  border: '1px solid var(--line)', borderRight: 'none',
+                  borderRadius: '6px 0 0 6px',
+                  padding: '0 12px 10px 12px',
+                  boxShadow: '-2px 0 10px rgba(0,0,0,0.12)',
+                  width: 248, fontSize: 12, color: '#3a342c',
+                  overflowY: 'auto',
+                  animation: 'flyslide 180ms ease-out' }}
+         onMouseDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 2,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    margin: '0 -12px 10px -12px', padding: '8px 12px',
+                    background: 'rgba(58, 62, 70, 0.97)', color: '#f1f5f9',
+                    borderBottom: '1px solid #1f2937' }}>
+        <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: 0.3 }}>Camera tour</div>
+        <button onClick={() => setOpen(false)} title="hide"
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer',
+                         color: '#cbd5e1', padding: 0, fontSize: 18, lineHeight: 1 }}>›</button>
+      </div>
+      {numRow('Min tilt',         'minTilt',       0, 89,  1, '°')}
+      {numRow('Optimal tilt',     'optTilt',       0, 89,  1, '°')}
+      {numRow('Max tilt',         'maxTilt',       0, 89,  1, '°')}
+      {numRow('Tilt speed',       'tiltSpeed',     1, 120, 1, '°/s')}
+      {numRow('Rotation speed',   'rotSpeed',      1, 180, 1, '°/s')}
+      {numRow('Expanded zoom',    'expandedZoom', -3,  6, 0.1, '')}
+      {numRow('Collapsed zoom',   'collapsedZoom',-3,  6, 0.1, '')}
+      {numRow('Wait at each pose','waitSec',       0, 30, 0.5, 's')}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 7,
+                      padding: '6px 0', cursor: 'pointer', fontSize: 12 }}>
+        <input type="checkbox" checked={!!config.collapseAtMaxTilt}
+               onChange={(e) => upd({ collapseAtMaxTilt: e.target.checked })} />
+        <span>Collapse layers at max tilt</span>
+      </label>
+      <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+        {playing ? (
+          <button onClick={onStop}
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #b03030',
+                           background: '#b03030', color: '#fff', borderRadius: 4,
+                           cursor: 'pointer', fontWeight: 600 }}>
+            ■ Stop
+          </button>
+        ) : (
+          <button onClick={onPlay}
+                  style={{ flex: 1, padding: '8px 12px', border: '1px solid #2f6f3e',
+                           background: '#2f6f3e', color: '#fff', borderRadius: 4,
+                           cursor: 'pointer', fontWeight: 600 }}>
+            ▶ Play
+          </button>
+        )}
+      </div>
     </div>
   );
 }

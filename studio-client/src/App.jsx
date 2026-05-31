@@ -287,7 +287,7 @@ export default function App() {
 
       {/* Footer: small transparent strip with credit; chevron toggles auto-hide */}
       <div className={`footer ${footerVisible ? '' : 'hidden'}`}>
-        Developed by APSR
+        Developed by Ana Paola Stumpf Rodrigues
         <button className="footer-toggle" title={footerPinned ? 'auto-hide footer' : 'pin footer'}
                 onClick={() => setFooterPinned((p) => !p)}>
           <ChevronDouble dir={footerPinned ? 'down' : 'up'} size={11} />
