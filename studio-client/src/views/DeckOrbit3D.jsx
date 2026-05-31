@@ -790,60 +790,54 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     return !l || l.visible !== false;
   };
 
-  // Per-layer slab geometry. Rather than wrap every prop in a convex hull
-  // (which over-extends for L-shaped / curving corridors and pads empty
-  // space inside the curve), we treat the slab as the UNION of:
-  //   - a small disc under each point prop in the layer
-  //   - the saved fill polygon, if Configure-fill produced one
-  //   - the prop's own geometry for path / polygon props (the lifted prop
-  //     itself reads as the slab — no extra geometry needed)
-  // The render path below draws discs and polygons as separate layers, so
-  // visually they overlap into a single snug "carpet" beneath whatever
-  // arrangement of props the user actually placed.
+  // Per-layer slab geometry. A single axis-aligned rectangle that wraps
+  // every prop position (plus, if Configure-fill produced one, the saved
+  // polygon's vertices) — extended slightly outward by the largest prop
+  // footprint in the layer so the slab snugly covers the props' actual
+  // bounds, not just their centre points. One clean rectangle per layer,
+  // no chain-of-discs artifacts.
   const layerHulls = useMemo(() => {
     return propLayers.map((layer) => {
       if (layer.visible === false) return null;
       const items = propsItems.filter((p) => p.layerId === layer.id);
       const hasSavedPolygon = Array.isArray(layer.polygon) && layer.polygon.length >= 3;
       if (items.length === 0 && !hasSavedPolygon) return null;
-      const discs = [];      // [x, y, radius]
-      const labelPts = [];   // for centroid of the layer name
+      // Collect every (x, y) the slab needs to wrap.
+      const pts = [];
+      let maxFootprint = 4; // metres, for outward padding
       for (const p of items) {
-        if (Array.isArray(p.position)) {
-          // Disc roughly matches the prop's footprint so the slab is
-          // snug — not a flat fixed-size halo. Cap so a giant prop
-          // doesn't produce a huge disc that crowds neighbours.
-          const meta = PROP_META[p.type] || {};
-          const o = propSizes[p.type] || {};
-          const inst = p.instanceSize || {};
-          const heightM = inst.h ?? o.h ?? meta.size ?? 4;
-          const widthM  = inst.w ?? o.w ?? (heightM * (meta.w && meta.h ? meta.w / meta.h : 1));
-          // Use the larger of (footprint, breathing-room) and scale up so
-          // neighbouring discs overlap into one solid block instead of a
-          // chain of circles. Capped so a giant prop doesn't make a huge
-          // disc on its own.
-          const r = Math.min(18, Math.max(4, Math.max(widthM, heightM) * 1.1));
-          discs.push([p.position[0], p.position[1], r]);
-          labelPts.push([p.position[0], p.position[1]]);
-        } else if (Array.isArray(p.path) && p.path[0]) {
-          labelPts.push([p.path[0][0], p.path[0][1]]);
-        } else if (Array.isArray(p.polygon) && p.polygon[0]) {
-          labelPts.push([p.polygon[0][0], p.polygon[0][1]]);
+        const meta = PROP_META[p.type] || {};
+        const o = propSizes[p.type] || {};
+        const inst = p.instanceSize || {};
+        const heightM = inst.h ?? o.h ?? meta.size ?? 4;
+        const widthM  = inst.w ?? o.w ?? (heightM * (meta.w && meta.h ? meta.w / meta.h : 1));
+        if (Number.isFinite(widthM) && Number.isFinite(heightM)) {
+          maxFootprint = Math.max(maxFootprint, Math.max(widthM, heightM));
         }
+        if (Array.isArray(p.position)) pts.push([p.position[0], p.position[1]]);
+        else if (Array.isArray(p.path)) for (const v of p.path) if (Array.isArray(v)) pts.push([v[0], v[1]]);
+        else if (Array.isArray(p.polygon)) for (const v of p.polygon) if (Array.isArray(v)) pts.push([v[0], v[1]]);
       }
-      const savedPolygon = hasSavedPolygon ? layer.polygon.map(([x, y]) => [x, y]) : null;
-      if (savedPolygon) for (const v of savedPolygon) labelPts.push(v);
-      // Fallback centroid if no points (shouldn't happen given the guard
-      // above): origin keeps the label out of the way.
-      let cx = 0, cy = 0;
-      if (labelPts.length) {
-        for (const [x, y] of labelPts) { cx += x; cy += y; }
-        cx /= labelPts.length; cy /= labelPts.length;
+      if (hasSavedPolygon) for (const v of layer.polygon) if (Array.isArray(v)) pts.push([v[0], v[1]]);
+      if (pts.length === 0) return null;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const [x, y] of pts) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
       }
+      // Pad by half the largest prop footprint (+ a small fudge) so the
+      // rectangle covers each prop's full extent, not just its centre.
+      const pad = maxFootprint * 0.55 + 1;
+      const polygon = [
+        [minX - pad, minY - pad],
+        [maxX + pad, minY - pad],
+        [maxX + pad, maxY + pad],
+        [minX - pad, maxY + pad],
+      ];
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
       return {
         id: layer.id, name: layer.name,
-        discs, savedPolygon,
-        centroid: [cx, cy], count: items.length,
+        polygon, centroid: [cx, cy], count: items.length,
       };
     }).filter(Boolean);
   }, [propLayers, propsItems, propSizes]);
@@ -1572,53 +1566,23 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const layer = propLayers[idx];
       const t = layerTransform(h.id);
       const z = surfaceZ + (idx + 1) * layerExplodeGap - 0.04 + t.dz;
-      // Apply layer xy offset so discs / polygon / label all track the
-      // props they represent.
-      const discs = h.discs.map(([x, y, r]) => [x + t.dx, y + t.dy, r]);
-      const savedPolygon = h.savedPolygon
-        ? h.savedPolygon.map(([x, y]) => [x + t.dx, y + t.dy])
-        : null;
+      const polygon = h.polygon.map(([x, y]) => [x + t.dx, y + t.dy]);
       const centroid = [h.centroid[0] + t.dx, h.centroid[1] + t.dy];
       // Layer's own picked colour wins; otherwise rotate through the palette.
       const color = layer?.color ? hexRgb(layer.color) : PALETTE[idx % PALETTE.length];
-      return { ...h, idx, z, color, discs, savedPolygon, centroid };
+      return { ...h, idx, z, color, polygon, centroid };
     });
-    // Discs under each point prop. A ScatterplotLayer naturally produces
-    // a snug "carpet" — clustered props blend into a continuous slab,
-    // sparse props each get their own disc, and there is no convex-hull
-    // overshoot for L / curving arrangements.
-    const allDiscs = slabs.flatMap((s) => s.discs.map(([x, y, r]) => ({ x, y, r, z: s.z, color: s.color })));
-    if (allDiscs.length) {
-      layers.push(new ScatterplotLayer({
-        id: 'layer-slab-discs', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        data: allDiscs,
-        getPosition: (d) => [d.x, d.y, d.z],
-        getRadius: (d) => d.r,
-        radiusUnits: 'meters',
-        // No per-disc outline: clustered discs would otherwise look like a
-        // chain of circles. Anti-aliased fill edge gives the boundary.
-        filled: true, stroked: false,
-        getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 150],
-        parameters: { depthTest: false },
-        updateTriggers: { getPosition: [surfaceZ, layerExplodeGap, layersExploded] },
-      }));
-    }
-    // Saved fill polygon (if any) — keeps the user's explicit drawn
-    // shape visible regardless of how many props are in the layer.
-    const polySlabs = slabs.filter((s) => s.savedPolygon && s.savedPolygon.length >= 3);
-    if (polySlabs.length) {
-      layers.push(new PolygonLayer({
-        id: 'layer-slab-polys', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        data: polySlabs,
-        getPolygon: (d) => d.savedPolygon.map(([x, y]) => [x, y, d.z]),
-        extruded: false, filled: true, stroked: true,
-        getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 110],
-        getLineColor: (d) => [d.color[0], d.color[1], d.color[2], 230],
-        lineWidthUnits: 'pixels', getLineWidth: 2.0,
-        parameters: { depthTest: false },
-        updateTriggers: { getPolygon: [surfaceZ, layerExplodeGap, layersExploded] },
-      }));
-    }
+    layers.push(new PolygonLayer({
+      id: 'layer-slabs', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      data: slabs,
+      getPolygon: (d) => d.polygon.map(([x, y]) => [x, y, d.z]),
+      extruded: false, filled: true, stroked: true,
+      getFillColor: (d) => [d.color[0], d.color[1], d.color[2], 130],
+      getLineColor: (d) => [d.color[0], d.color[1], d.color[2], 240],
+      lineWidthUnits: 'pixels', getLineWidth: 2.4,
+      parameters: { depthTest: false },
+      updateTriggers: { getPolygon: [surfaceZ, layerExplodeGap, layersExploded] },
+    }));
     if (showLayerNames) layerLabelData = slabs;
   }
 
