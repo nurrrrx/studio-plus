@@ -4093,10 +4093,13 @@ function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, on
     return (
       <button onClick={() => setOpen(true)} title="camera tour"
               onMouseDown={(e) => e.stopPropagation()}
-              style={{ position: 'absolute', right: 0, top: 'calc(var(--header-inset, 0px) + 60px)',
+              style={{ position: 'absolute', left: 0,
+                       // Sits BELOW the Customization collapse tab so the
+                       // two left-edge tabs don't overlap.
+                       top: 'calc(var(--header-inset, 0px) + 60px)',
                        zIndex: 7, background: 'rgba(255,255,255,0.94)',
-                       border: '1px solid var(--line)', borderRight: 'none',
-                       borderRadius: '6px 0 0 6px', padding: '8px 7px',
+                       border: '1px solid var(--line)', borderLeft: 'none',
+                       borderRadius: '0 6px 6px 0', padding: '8px 7px',
                        cursor: 'pointer', color: '#3a342c',
                        boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
@@ -4124,15 +4127,15 @@ function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, on
     </label>
   );
   return (
-    <div style={{ position: 'absolute', right: 0,
+    <div style={{ position: 'absolute', left: 0,
                   top: 'calc(var(--header-inset, 0px) + 16px)',
                   bottom: 'calc(var(--footer-inset, 0px) + 12px)',
                   zIndex: 7,
                   background: 'rgba(255,255,255,0.96)',
-                  border: '1px solid var(--line)', borderRight: 'none',
-                  borderRadius: '6px 0 0 6px',
+                  border: '1px solid var(--line)', borderLeft: 'none',
+                  borderRadius: '0 6px 6px 0',
                   padding: '0 12px 10px 12px',
-                  boxShadow: '-2px 0 10px rgba(0,0,0,0.12)',
+                  boxShadow: '2px 0 10px rgba(0,0,0,0.12)',
                   width: 248, fontSize: 12, color: '#3a342c',
                   overflowY: 'auto',
                   animation: 'flyslide 180ms ease-out' }}
@@ -4145,7 +4148,7 @@ function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, on
         <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: 0.3 }}>Camera tour</div>
         <button onClick={() => setOpen(false)} title="hide"
                 style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-                         color: '#cbd5e1', padding: 0, fontSize: 18, lineHeight: 1 }}>›</button>
+                         color: '#cbd5e1', padding: 0, fontSize: 18, lineHeight: 1 }}>‹</button>
       </div>
       {numRow('Min tilt',         'minTilt',       0, 89,  1, '°')}
       {numRow('Optimal tilt',     'optTilt',       0, 89,  1, '°')}
