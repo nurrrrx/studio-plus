@@ -9,16 +9,20 @@ import './v2.css';
 
 const SIDEBAR_W_OPEN = 256;
 const SIDEBAR_W_COLLAPSED = 56;
+const RIGHT_W_OPEN = 280;
+const RIGHT_W_COLLAPSED = 0;
 
 export default function AppV2() {
   const [open, setOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
   // Active nav item — purely cosmetic for now.
   const [active, setActive] = useState('overview');
+  const [activeToc, setActiveToc] = useState('layers/bike-lanes');
 
   return (
     <div className="v2-root">
       <AppSidebar open={open} setOpen={setOpen} active={active} setActive={setActive} />
-      <SidebarInset open={open}>
+      <SidebarInset open={open} rightOpen={rightOpen}>
         <header className="v2-header">
           <button className="v2-icon-btn"
                   title={open ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -35,6 +39,11 @@ export default function AppV2() {
           <a href="../" className="v2-link" title="Back to the canvas app">
             ← classic view
           </a>
+          <button className="v2-icon-btn"
+                  title={rightOpen ? 'Hide details panel' : 'Show details panel'}
+                  onClick={() => setRightOpen((o) => !o)}>
+            <Icon name={rightOpen ? 'sidebar-right' : 'sidebar-left'} />
+          </button>
         </header>
         <main className="v2-main">
           <div className="v2-card-grid">
@@ -56,6 +65,7 @@ export default function AppV2() {
           </div>
         </main>
       </SidebarInset>
+      <RightSidebar open={rightOpen} active={activeToc} setActive={setActiveToc} />
     </div>
   );
 }
@@ -162,12 +172,92 @@ function SidebarGroup({ group, open, active, setActive }) {
   );
 }
 
+// ---------- Right sidebar (Table of Contents, shadcn sidebar-15 style) ------
+
+// Studio+-flavoured nav so the page reads like the real app. Replace with
+// dynamic data (savedViews, propLayers) once the panel is wired.
+const TOC_GROUPS = [
+  {
+    title: 'Overview',
+    items: [
+      { key: 'overview/project', label: 'Project info' },
+      { key: 'overview/snapshot', label: 'Current snapshot' },
+    ],
+  },
+  {
+    title: 'Layers',
+    items: [
+      { key: 'layers/pavement',  label: 'High-albedo pavement' },
+      { key: 'layers/bike-lanes', label: 'Bike lanes', isActive: true },
+      { key: 'layers/green',     label: 'Green corridors' },
+      { key: 'layers/park',      label: 'Dense large park' },
+      { key: 'layers/burjeel',   label: 'Burjeel wind tower' },
+    ],
+  },
+  {
+    title: 'Views',
+    items: [
+      { key: 'views/default',  label: 'Default' },
+    ],
+  },
+  {
+    title: 'Camera tour',
+    items: [
+      { key: 'tour/config',   label: 'Configuration' },
+      { key: 'tour/playback', label: 'Playback' },
+    ],
+  },
+];
+
+function RightSidebar({ open, active, setActive }) {
+  if (!open) return null;
+  return (
+    <aside className="v2-right-sidebar"
+           style={{ width: RIGHT_W_OPEN }}>
+      <div className="v2-sidebar-content">
+        <div className="v2-sb-group">
+          <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
+            <span>Table of contents</span>
+          </div>
+          <ul className="v2-sb-list">
+            {TOC_GROUPS.map((group) => (
+              <li key={group.title}>
+                <div className="v2-toc-section">
+                  <button className="v2-sb-item v2-toc-section-btn"
+                          onClick={() => setActive(`section/${group.title}`)}>
+                    <span className="v2-sb-label" style={{ fontWeight: 600 }}>{group.title}</span>
+                  </button>
+                  {group.items?.length > 0 && (
+                    <ul className="v2-toc-sub">
+                      {group.items.map((it) => (
+                        <li key={it.key}>
+                          <button className={`v2-sb-item v2-toc-sub-item ${active === it.key ? 'is-active' : ''}`}
+                                  onClick={() => setActive(it.key)}>
+                            <span className="v2-sb-label">{it.label}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 // ---------- Inset (main column) ---------------------------------------------
 
-function SidebarInset({ open, children }) {
+function SidebarInset({ open, rightOpen, children }) {
   return (
     <div className="v2-inset"
-         style={{ marginLeft: open ? SIDEBAR_W_OPEN : SIDEBAR_W_COLLAPSED }}>
+         style={{
+           marginLeft:  open ? SIDEBAR_W_OPEN : SIDEBAR_W_COLLAPSED,
+           marginRight: rightOpen ? RIGHT_W_OPEN : RIGHT_W_COLLAPSED,
+         }}>
       {children}
     </div>
   );

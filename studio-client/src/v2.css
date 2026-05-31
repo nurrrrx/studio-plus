@@ -108,6 +108,34 @@ body {
 }
 .v2-sidebar-rail:hover { background: linear-gradient(90deg, transparent, rgba(0,0,0,0.06)); }
 
+/* ---- Right sidebar (TOC) ---- */
+.v2-right-sidebar {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  background: var(--v2-bg);
+  border-left: 1px solid var(--v2-border);
+  transition: width 180ms ease;
+  z-index: 10;
+}
+.v2-right-sidebar .v2-sidebar-content { padding: 14px 8px; }
+
+.v2-toc-section { padding: 2px 0; }
+.v2-toc-section-btn { padding: 6px 8px; }
+.v2-toc-sub {
+  list-style: none; padding: 0; margin: 2px 0 6px;
+  border-left: 1px solid var(--v2-border);
+  margin-left: 10px; padding-left: 6px;
+}
+.v2-toc-sub-item {
+  padding: 4px 8px; font-size: 12.5px;
+  color: var(--v2-muted-fg);
+}
+.v2-toc-sub-item:hover { color: var(--v2-fg); }
+.v2-toc-sub-item.is-active {
+  background: var(--v2-accent); color: var(--v2-accent-fg);
+  font-weight: 500;
+}
+
 /* ---- Main inset ---- */
 .v2-inset {
   flex: 1; min-width: 0;
