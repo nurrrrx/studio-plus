@@ -3384,6 +3384,16 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                      rotationX: pitch != null ? clampX(pitch) : v.rotationX,
                    }))} />
         )}
+        {show('gizmo') && (
+          <TargetNudge
+            target={viewState.target}
+            onNudge={(axis, sign) => setViewState((v) => {
+              const step = axis === 2 ? 5 : 20; // metres; Z stepped finer
+              const t = Array.isArray(v.target) ? [v.target[0] || 0, v.target[1] || 0, v.target[2] || 0] : [0, 0, 0];
+              t[axis] = (t[axis] || 0) + sign * step;
+              return { ...v, target: t };
+            })} />
+        )}
         {show('save') && <SaveButton dirty={dirty} save={save} />}
         <div style={{ display: 'flex', gap: 5 }} onMouseDown={(e) => e.stopPropagation()}>
           <button title="hand tool — drag to pan instead of rotate"
@@ -3482,6 +3492,46 @@ function Gizmo3D({ bearing, pitch, onSet }) {
         <circle r="2.4" fill="#26211a" />
         {items.map((it) => <g key={it.label}>{arrow(it.v, it.color, it.label, it.click)}</g>)}
       </svg>
+    </div>
+  );
+}
+
+// Compact X/Y/Z nudge pad. Three rows of [−] AXIS [+] — clicking shifts the
+// orbit target along that world axis by a small step (Z is finer than XY).
+// Colour-matched to the Gizmo3D arrows so the two read as one unit.
+function TargetNudge({ target, onNudge }) {
+  const AXES = [
+    { i: 0, label: 'X', color: '#d04a3a' },
+    { i: 1, label: 'Y', color: '#3a8f4a' },
+    { i: 2, label: 'Z', color: '#3a6fd0' },
+  ];
+  const btn = (axis, sign) => ({
+    width: 18, height: 18, lineHeight: '16px',
+    padding: 0, fontSize: 12, fontWeight: 700,
+    border: '1px solid var(--line)', borderRadius: 3,
+    background: '#fff', color: axis.color, cursor: 'pointer',
+    userSelect: 'none',
+  });
+  const fmt = (n) => Number.isFinite(n) ? n.toFixed(0) : '—';
+  const t = Array.isArray(target) ? target : [];
+  return (
+    <div title="Pan the orbit target along world axes (Z is vertical)"
+         style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 8,
+                  border: '1px solid var(--line)', boxShadow: '0 1px 5px rgba(0,0,0,0.15)',
+                  padding: '6px 7px', display: 'flex', flexDirection: 'column', gap: 4 }}
+         onMouseDown={(e) => e.stopPropagation()}>
+      {AXES.map((axis) => (
+        <div key={axis.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button style={btn(axis, -1)} title={`${axis.label}−`}
+                  onClick={() => onNudge(axis.i, -1)}>−</button>
+          <div style={{ minWidth: 38, textAlign: 'center', fontSize: 10,
+                        color: axis.color, fontWeight: 700, letterSpacing: 0.3 }}>
+            {axis.label} {fmt(t[axis.i])}
+          </div>
+          <button style={btn(axis, +1)} title={`${axis.label}+`}
+                  onClick={() => onNudge(axis.i, +1)}>+</button>
+        </div>
+      ))}
     </div>
   );
 }
