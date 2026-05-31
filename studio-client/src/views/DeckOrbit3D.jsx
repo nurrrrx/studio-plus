@@ -901,11 +901,19 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     const localT = Math.max(0, Math.min(1, (explodeT - idx * stagger) / EXPLODE_STAGGER_SPAN));
     return 1 - (1 - localT) * (1 - localT); // easeOutQuad
   };
+  // Keep a tiny stacking gap even when fully collapsed so the 2D
+  // top-down view paints layers in the same order as the customization
+  // list (layer 0 at the bottom, layer N on top). The full gap kicks
+  // in via per-layer easing as the explode animation progresses.
+  const COLLAPSED_STACK_GAP = 0.05; // metres per layer at explodeT = 0
   const layerExplodeOffset = (layerId) => {
-    if (!layerId || explodeT <= 0) return 0;
+    if (!layerId) return 0;
     const idx = propLayers.findIndex((l) => l.id === layerId);
     if (idx < 0) return 0;
-    return (idx + 1) * layerExplodeGap * perLayerEaseT(idx, propLayers.length);
+    const easedT = perLayerEaseT(idx, propLayers.length);
+    const minStack = (idx + 1) * COLLAPSED_STACK_GAP;
+    const full = (idx + 1) * layerExplodeGap;
+    return minStack + (full - minStack) * easedT;
   };
 
   // Layer transform: per-layer visibility flag + (x, y, z) offsets applied to
