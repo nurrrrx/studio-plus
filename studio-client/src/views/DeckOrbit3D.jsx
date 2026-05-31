@@ -2401,7 +2401,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       // hangs off the left side of every layer.
       getPosition: (d) => [d.leftAnchor[0], d.leftAnchor[1], d.z + Math.max(3, layerExplodeGap * 0.4)],
       getText: (d) => d.name,
-      getSize: 14, getColor: (d) => [...d.color, 255],
+      getSize: 13, getColor: [0, 0, 0, 255],
       getTextAnchor: 'end', getAlignmentBaseline: 'center',
       // Nudge a few pixels further left so text doesn't kiss the slab edge.
       getPixelOffset: [-8, 0],
