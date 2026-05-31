@@ -3408,10 +3408,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         {/* Row 1 — Compass */}
         {show('compass') && <Compass bearing={finite(viewState.rotationOrbit, 0)} onBearing={setBearing} />}
 
-        {/* Row 2 — Rotation + Zoom tall sliders */}
-        {(show('compass') || show('zoom')) && (
+        {/* Row 2 — Rotation + Zoom + Tilt tall sliders */}
+        {(show('compass') || show('zoom') || show('tilt')) && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'stretch',
-                        flex: 1, minHeight: 0, width: 122 }}>
+                        flex: 1, minHeight: 0, width: 180 }}>
             {show('compass') && (
               <TallSlider label="Rot°" value={finite(viewState.rotationOrbit, 0)}
                           min={0} max={360} step={1} wrap color="#dc8a3a"
@@ -3422,6 +3422,12 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               <TallSlider label="Zoom" value={finite(viewState.zoom, 0)}
                           min={-3} max={6} step={0.1} color="#3a8fdc"
                           onChange={(z) => setViewState((vs) => ({ ...vs, zoom: Math.max(-3, Math.min(6, z)) }))} />
+            )}
+            {show('tilt') && (
+              <TallSlider label="Tilt°" value={finite(viewState.rotationX, 55)}
+                          min={0} max={89} step={1} color="#7a6fd0"
+                          valueFmt={(v) => Math.round(v)}
+                          onChange={(p) => setPitch(p)} />
             )}
           </div>
         )}
@@ -3436,10 +3442,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                    }))} />
         )}
 
-        {/* Row 4 — Target X + Y tall sliders */}
+        {/* Row 4 — Target X + Y + Z tall sliders */}
         {show('gizmo') && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'stretch',
-                        flex: 1, minHeight: 0, width: 122 }}>
+                        flex: 1, minHeight: 0, width: 180 }}>
             <TallSlider label="X" value={finite(viewState.target?.[0], 0)}
                         min={-2000} max={2000} step={5} color="#d04a3a"
                         valueFmt={(v) => Math.round(v)}
@@ -3454,13 +3460,6 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                           const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
                           t[1] = y; return { ...vs, target: t };
                         })} />
-          </div>
-        )}
-
-        {/* Row 5 — Target Z tall slider (vertical movement) */}
-        {show('gizmo') && (
-          <div style={{ display: 'flex', alignItems: 'stretch',
-                        flex: 1, minHeight: 0, width: 60 }}>
             <TallSlider label="Z" value={finite(viewState.target?.[2], 0)}
                         min={-100} max={500} step={1} color="#3a6fd0"
                         valueFmt={(v) => Math.round(v)}
@@ -3576,11 +3575,19 @@ function HoldButton({ onStep, children, title, style, disabled }) {
     };
     timer.current = setTimeout(tick, 320);
   };
+  // user-select:none + touchAction:manipulation prevents the browser from
+  // selecting the +/− glyph as text when the user multi-clicks or drags,
+  // and skips the long-press context menu on touch devices.
+  const noSelect = {
+    userSelect: 'none', WebkitUserSelect: 'none', msUserSelect: 'none',
+    WebkitTouchCallout: 'none', touchAction: 'manipulation',
+  };
   return (
     <button type="button" disabled={disabled} title={title}
             onMouseDown={start} onMouseUp={stop} onMouseLeave={stop}
             onTouchStart={start} onTouchEnd={stop} onTouchCancel={stop}
-            style={style}>{children}</button>
+            onContextMenu={(e) => e.preventDefault()}
+            style={{ ...noSelect, ...style }}>{children}</button>
   );
 }
 
@@ -3634,7 +3641,8 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
   };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                  flex: 1, height: '100%', minWidth: 0 }}>
+                  flex: 1, height: '100%', minWidth: 0,
+                  userSelect: 'none', WebkitUserSelect: 'none' }}>
       <div style={{ fontSize: 9, color: '#5e564a', letterSpacing: 1.3,
                     textTransform: 'uppercase', fontWeight: 600,
                     textShadow: '0 0 4px rgba(255,255,255,0.9)' }}>{label}</div>
@@ -3643,10 +3651,11 @@ function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
            style={{ position: 'relative', width: 18, flex: 1, minHeight: 60,
                     border: '1px solid #c8c2b3', borderRadius: 6,
                     background: 'rgba(245,243,237,0.92)', cursor: 'ns-resize',
-                    boxShadow: 'inset 0 0 6px rgba(0,0,0,0.06)' }}>
+                    boxShadow: 'inset 0 0 6px rgba(0,0,0,0.06)',
+                    touchAction: 'none' }}>
         <div style={{ position: 'absolute', bottom: 0, left: 1, right: 1,
                       height: `${ratio * 100}%`, background: color, opacity: 0.45,
-                      borderRadius: 5, transition: 'height 70ms ease' }} />
+                      borderRadius: 5 }} />
         <div style={{ position: 'absolute', left: -3, right: -3,
                       top: `${(1 - ratio) * 100}%`, transform: 'translateY(-50%)',
                       height: 5, background: '#26211a', borderRadius: 3 }} />
