@@ -464,6 +464,27 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     };
   }, []);
 
+  // Polygon / path drawing only feels "pixel-perfect" when the camera is
+  // looking straight down — otherwise the click ray passes through
+  // buildings and lands on the ground further from the camera, so the
+  // dot APPEARS offset from the cursor even though the math is right. We
+  // snap pitch to 0 the moment a drawing mode starts and restore it when
+  // the user finishes / cancels.
+  const prePolyPitchRef = useRef(null);
+  useEffect(() => {
+    const drawing = fillMode === 'drawing'
+                    || placeMode === 'bikelane'
+                    || (placeMode && PROP_META[placeMode]?.polygon);
+    if (drawing && prePolyPitchRef.current == null) {
+      prePolyPitchRef.current = viewRef.current?.rotationX ?? 55;
+      setViewState((v) => ({ ...v, rotationX: 0 }));
+    } else if (!drawing && prePolyPitchRef.current != null) {
+      const restore = prePolyPitchRef.current;
+      prePolyPitchRef.current = null;
+      setViewState((v) => ({ ...v, rotationX: restore }));
+    }
+  }, [fillMode, placeMode]);
+
   // Box-select drag: while boxSelect is on, mousedown anywhere in the canvas
   // (other than on the box-select UI itself) starts a screen-space rectangle.
   // On mouseup the rectangle is converted to a list of props whose projected
