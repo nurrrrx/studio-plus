@@ -906,6 +906,20 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // list (layer 0 at the bottom, layer N on top). The full gap kicks
   // in via per-layer easing as the explode animation progresses.
   const COLLAPSED_STACK_GAP = 0.05; // metres per layer at explodeT = 0
+  // Sort filtered prop items by their layer's position in the
+  // customization list so the first (top of list) layer paints first
+  // (bottom), and the last paints over the top. Most prop deck.gl
+  // layers disable depthTest, so paint order — not z — is what
+  // actually decides visual stacking when the layers are collapsed.
+  const layerOrderIdx = (id) => {
+    const i = propLayers.findIndex((l) => l.id === id);
+    return i < 0 ? -1 : i;
+  };
+  const sortByLayer = (items) => {
+    // Stable sort: items with no layer go first; layered items follow
+    // in ascending layer index (layer 0 -> last in customization list).
+    return [...items].sort((a, b) => layerOrderIdx(a.layerId) - layerOrderIdx(b.layerId));
+  };
   const layerExplodeOffset = (layerId) => {
     if (!layerId) return 0;
     const idx = propLayers.findIndex((l) => l.id === layerId);
@@ -1778,7 +1792,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // natural-feeling area instead of straight segments. Pickable for delete /
   // select. Drawn BEFORE the road / buildings so they sit underneath
   // structures, like real terrain.
-  const polyPropItems = propsItems.filter((p) => PROP_META[p.type]?.polygon && Array.isArray(p.polygon) && p.polygon.length >= 3 && isLayerVisible(p.layerId));
+  const polyPropItems = sortByLayer(propsItems.filter((p) => PROP_META[p.type]?.polygon && Array.isArray(p.polygon) && p.polygon.length >= 3 && isLayerVisible(p.layerId)));
   if (polyPropItems.length > 0) {
     const smoothCache = new Map();
     const smoothFor = (item) => {
@@ -1818,7 +1832,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   }
 
   // Label (3D word) props. Always-facing-camera TextLayer in Helvetica Neue.
-  const labelItems = propsItems.filter((p) => p.type === 'label' && isLayerVisible(p.layerId));
+  const labelItems = sortByLayer(propsItems.filter((p) => p.type === 'label' && isLayerVisible(p.layerId)));
   if (labelItems.length > 0) {
     layers.push(new TextLayer({
       id: 'labels', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
@@ -1856,7 +1870,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // type 'bikelane' and a path array. Line width = propSizes.bikelane.h (m).
   // Colour = propColors.bikelane || defaultColor. Pickable so delete-mode and
   // ⌘-click can remove a lane.
-  const bikeLaneItems = propsItems.filter((p) => p.type === 'bikelane' && Array.isArray(p.path) && p.path.length >= 2 && isLayerVisible(p.layerId));
+  const bikeLaneItems = sortByLayer(propsItems.filter((p) => p.type === 'bikelane' && Array.isArray(p.path) && p.path.length >= 2 && isLayerVisible(p.layerId)));
   if (bikeLaneItems.length > 0) {
     const widthM = (propSizes.bikelane?.h ?? PROP_META.bikelane.size);
     const col = propColors.bikelane || PROP_META.bikelane.defaultColor;
@@ -1951,8 +1965,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // sample angle). A second flat fading layer (thicker low-alpha stroke)
   // softens the edges so the waves read as gusts rather than rings.
   // Inflow particles still descend into the tower cap.
-  const burjeelItems = propsItems.filter((p) =>
-    p.type === 'burjeel' && Array.isArray(p.position) && isLayerVisible(p.layerId));
+  const burjeelItems = sortByLayer(propsItems.filter((p) =>
+    p.type === 'burjeel' && Array.isArray(p.position) && isLayerVisible(p.layerId)));
   if (burjeelItems.length > 0) {
     // Six staggered wave-fronts so a new gust starts every ~0.8 s.
     const WAVE_PHASES = [0, 0.166, 0.333, 0.5, 0.666, 0.833];
@@ -2053,7 +2067,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // so the road and building draw calls come later and visually cover any
   // tile portion that extends onto them, even in top-down camera angles where
   // GL depth sorting doesn't disambiguate co-planar layers.
-  const flatPropItemsEarly = propsItems.filter((p) => PROP_META[p.type]?.flat && isLayerVisible(p.layerId));
+  const flatPropItemsEarly = sortByLayer(propsItems.filter((p) => PROP_META[p.type]?.flat && isLayerVisible(p.layerId)));
   if (flatPropItemsEarly.length > 0) {
     const movingIdxFlat = movingPropId
       ? flatPropItemsEarly.findIndex((p) => p.id === movingPropId)
@@ -2320,8 +2334,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     // layers array (before roads / buildings) so that road and building fills
     // visually cover any tile portion that extends onto them — see "flat
     // props" insertion above the roads layer.
-    const billboardItems = propsItems.filter((p) => !PROP_META[p.type]?.flat && p.type !== 'bikelane' && isLayerVisible(p.layerId));
-    const flatItems      = propsItems.filter((p) =>  PROP_META[p.type]?.flat && isLayerVisible(p.layerId));
+    const billboardItems = sortByLayer(propsItems.filter((p) => !PROP_META[p.type]?.flat && p.type !== 'bikelane' && isLayerVisible(p.layerId)));
+    const flatItems      = sortByLayer(propsItems.filter((p) =>  PROP_META[p.type]?.flat && isLayerVisible(p.layerId)));
     const propsIconConfig = (id, items, billboard) => {
       // When a prop is picked up in move mode, force-highlight it via
       // highlightedObjectIndex (forces deck.gl to tint that specific feature).
