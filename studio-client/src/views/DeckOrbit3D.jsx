@@ -357,6 +357,31 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const [activeLayerId, setActiveLayerId] = useState(null);
   const [layersExploded, setLayersExploded] = useState(false);
   const [layerExplodeGap, setLayerExplodeGap] = useState(8); // metres between layers
+  // Animated explode progress (0 = fully collapsed, 1 = fully exploded).
+  // useEffect below tweens toward (layersExploded ? 1 : 0) so slabs and
+  // props slide out smoothly. Per-layer easing is applied at render time
+  // so the ground-most layer arrives first.
+  const [explodeT, setExplodeT] = useState(0);
+  const explodeTRef = useRef(0);
+  const explodeAnimRef = useRef(null);
+  useEffect(() => {
+    const target = layersExploded ? 1 : 0;
+    if (explodeTRef.current === target) return;
+    if (explodeAnimRef.current) cancelAnimationFrame(explodeAnimRef.current);
+    const from = explodeTRef.current;
+    const startTime = performance.now();
+    const DURATION_MS = 1600;
+    const tick = (now) => {
+      const t = Math.min(1, (now - startTime) / DURATION_MS);
+      const v = from + (target - from) * t;
+      explodeTRef.current = v;
+      setExplodeT(v);
+      if (t < 1) explodeAnimRef.current = requestAnimationFrame(tick);
+      else explodeAnimRef.current = null;
+    };
+    explodeAnimRef.current = requestAnimationFrame(tick);
+    return () => { if (explodeAnimRef.current) cancelAnimationFrame(explodeAnimRef.current); };
+  }, [layersExploded]);
   const [showLayerPolygons, setShowLayerPolygons] = useState(false); // translucent slab per layer
   const [showLayerNames, setShowLayerNames] = useState(true);        // floating name label per layer
   // When on, the slabs + labels are pushed at the END of the deck.gl
@@ -860,13 +885,21 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     return () => window.removeEventListener('keydown', onKey);
   }, [placeMode, deleteMode, moveMode, fillMode, fillPolygon, bikeLanePath, activeLayerId, selectMode, selectedPropId, selectedPropIds, boxSelect, boxRect]);
 
-  // Per-prop z-offset when custom layers are exploded. Props with no layer
-  // assignment stay grounded; layer i is lifted by (i+1) * gap.
+  // Per-prop z-offset during the explode animation. Each layer eases
+  // out independently with a small stagger so the ground-most layer
+  // arrives at its slot first, then the one above, etc.
+  const EXPLODE_STAGGER_SPAN = 0.55; // fraction of total animation each layer takes
+  const perLayerEaseT = (idx, layerCount) => {
+    if (explodeT <= 0 || layerCount <= 0) return 0;
+    const stagger = layerCount > 1 ? (1 - EXPLODE_STAGGER_SPAN) / (layerCount - 1) : 0;
+    const localT = Math.max(0, Math.min(1, (explodeT - idx * stagger) / EXPLODE_STAGGER_SPAN));
+    return 1 - (1 - localT) * (1 - localT); // easeOutQuad
+  };
   const layerExplodeOffset = (layerId) => {
-    if (!layersExploded || !layerId) return 0;
+    if (!layerId || explodeT <= 0) return 0;
     const idx = propLayers.findIndex((l) => l.id === layerId);
     if (idx < 0) return 0;
-    return (idx + 1) * layerExplodeGap;
+    return (idx + 1) * layerExplodeGap * perLayerEaseT(idx, propLayers.length);
   };
 
   // Layer transform: per-layer visibility flag + (x, y, z) offsets applied to
@@ -1671,7 +1704,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // Custom-layer slabs: when exploded, draw a translucent polygon at each
   // layer's altitude that wraps the props on that layer, plus a name label
   // at the centroid. Gives an immediate "this is layer N" visual cue.
-  if (layersExploded && showLayerPolygons && layerHulls.length > 0) {
+  if (explodeT > 0.001 && showLayerPolygons && layerHulls.length > 0) {
     const PALETTE = [
       [76, 196, 220], [120, 196, 96], [220, 168, 76], [220, 96, 140],
       [180, 120, 220], [76, 220, 196], [220, 220, 96], [76, 140, 220],
@@ -1680,7 +1713,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const idx = propLayers.findIndex((l) => l.id === h.id);
       const layer = propLayers[idx];
       const t = layerTransform(h.id);
-      const z = surfaceZ + (idx + 1) * layerExplodeGap - 0.04 + t.dz;
+      const easedT = perLayerEaseT(idx, propLayers.length);
+      const z = surfaceZ + (idx + 1) * layerExplodeGap * easedT - 0.04 + t.dz;
       const polygon = h.polygon.map(([x, y]) => [x + t.dx, y + t.dy]);
       const centroid = [h.centroid[0] + t.dx, h.centroid[1] + t.dy];
       // Left-edge anchor: smallest X in the polygon, at the slab's
@@ -3962,6 +3996,67 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         const actionsCluster = (
           <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}
                onMouseDown={(e) => e.stopPropagation()}>
+            <button title={layersExploded ? 'Collapse layers' : 'Expand layers (auto 2D→3D first)'}
+                    onClick={() => {
+                      if (layersExploded) {
+                        setLayersExploded(false);
+                        return;
+                      }
+                      // 2D-ish view (very low tilt)? Tween camera to the
+                      // 3D home view first, then trigger the explode.
+                      const is2D = (viewState.rotationX ?? 0) < 5;
+                      if (!is2D) { setLayersExploded(true); return; }
+                      const fromVS = viewStateRef.current || viewState;
+                      const from = {
+                        rotationOrbit: fromVS.rotationOrbit,
+                        rotationX: fromVS.rotationX,
+                        zoom: fromVS.zoom,
+                        target: Array.isArray(fromVS.target) ? [...fromVS.target] : [0, 0, 0],
+                      };
+                      const to = {
+                        rotationOrbit: homeView.rotationOrbit,
+                        rotationX: homeView.rotationX,
+                        zoom: homeView.zoom,
+                        target: [...homeView.target],
+                      };
+                      const startT = performance.now();
+                      const dur = 800;
+                      const step = (now) => {
+                        const t = Math.min(1, (now - startT) / dur);
+                        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+                        setViewState((v) => ({
+                          ...v,
+                          rotationOrbit: from.rotationOrbit + (to.rotationOrbit - from.rotationOrbit) * e,
+                          rotationX: from.rotationX + (to.rotationX - from.rotationX) * e,
+                          zoom: from.zoom + (to.zoom - from.zoom) * e,
+                          target: [
+                            from.target[0] + (to.target[0] - from.target[0]) * e,
+                            from.target[1] + (to.target[1] - from.target[1]) * e,
+                            from.target[2] + (to.target[2] - from.target[2]) * e,
+                          ],
+                        }));
+                        if (t < 1) requestAnimationFrame(step);
+                        else setLayersExploded(true);
+                      };
+                      requestAnimationFrame(step);
+                    }}
+                    style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
+              {layersExploded ? (
+                /* collapse: arrows pointing inward toward center line */
+                <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                  <path fill="none" stroke="currentColor" strokeWidth="2"
+                        strokeLinecap="round" strokeLinejoin="round"
+                        d="M12 4v6 M9 7l3 3 3-3 M3 13h18 M12 20v-6 M9 17l3-3 3 3" />
+                </svg>
+              ) : (
+                /* explode: arrows pointing outward from center line */
+                <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                  <path fill="none" stroke="currentColor" strokeWidth="2"
+                        strokeLinecap="round" strokeLinejoin="round"
+                        d="M12 10V4 M9 7l3-3 3 3 M3 13h18 M12 14v6 M9 17l3 3 3-3" />
+                </svg>
+              )}
+            </button>
             <button title={flyPlaying ? 'Stop camera tour' : 'Play camera tour'}
                     onClick={() => {
                       if (flyPlaying) {
