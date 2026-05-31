@@ -317,6 +317,12 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // smoothly applies it; ✏ renames; × deletes. Round-trips through the
   // standard view-settings save.
   const [savedViews, setSavedViews] = useState([]);
+  // Per-preset camera overrides keyed by builtin id (e.g. '__builtin_2d').
+  // When the user saves over a built-in entry in the Save-view dialog,
+  // we store their camera here and apply it instead of the factory default.
+  const [viewOverrides, setViewOverrides] = useState({});
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveDialogName, setSaveDialogName] = useState('');
   // Ref that mirrors viewState so the fly-through animation can read the
   // latest camera without going through React's commit cycle. Starts as
   // null and is filled on the first effect after viewState is created
@@ -1343,7 +1349,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       numbersThrough, bldgFill, bldgLine, podiumFill, roadFill, roofWidth, edgeWidth, explodeGap,
       showTrees, fillCutouts, propsItems, propSizes, propColors, propAvoidIntersect, smartPlace,
       propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons, showLayerNames, layersInFront,
-      photoIncludeUi, flyConfig, savedViews,
+      photoIncludeUi, flyConfig, savedViews, viewOverrides,
       shape, size, basemapStyle,
       archBuildings, archRoads, archBasemap,
     },
@@ -1390,6 +1396,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     if (typeof s.layersInFront === 'boolean') setLayersInFront(s.layersInFront);
     if (s.flyConfig && typeof s.flyConfig === 'object') setFlyConfig((f) => ({ ...f, ...s.flyConfig }));
     if (Array.isArray(s.savedViews)) setSavedViews(s.savedViews);
+    if (s.viewOverrides && typeof s.viewOverrides === 'object') setViewOverrides(s.viewOverrides);
     if (typeof s.photoIncludeUi === 'boolean') setPhotoIncludeUi(s.photoIncludeUi);
     if (typeof s.propAvoidIntersect === 'boolean') setPropAvoidIntersect(s.propAvoidIntersect);
     if (s.smartPlace && typeof s.smartPlace === 'object') setSmartPlace(s.smartPlace);
@@ -3224,13 +3231,17 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               { id: '__builtin_2d', name: '2D',
                 onSelect: () => {
                   setLayersExploded(false);
-                  setViewState((v) => ({ ...v, rotationOrbit: 0, rotationX: 0,
-                                         target: [0, 0, targetZ], zoom: homeView.zoom }));
+                  const o = viewOverrides['__builtin_2d'];
+                  if (o) setViewState((v) => ({ ...v, ...o }));
+                  else setViewState((v) => ({ ...v, rotationOrbit: 0, rotationX: 0,
+                                              target: [0, 0, targetZ], zoom: homeView.zoom }));
                 } },
               { id: '__builtin_3d_collapsed', name: '3D Collapsed',
                 onSelect: () => {
                   setLayersExploded(false);
-                  setViewState({ ...homeView });
+                  const o = viewOverrides['__builtin_3d_collapsed'];
+                  if (o) setViewState((v) => ({ ...v, ...o }));
+                  else setViewState({ ...homeView });
                 } },
             ];
             const savedDisplay = savedViews.map((v) => ({
@@ -4109,8 +4120,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             </button>
             {show('save') && (
               <>
-                <button onClick={saveCurrentView}
-                        title="Save view — bookmark the current camera position under a name"
+                <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <button onClick={() => setSaveDialogOpen((o) => !o)}
+                        title="Save view — overwrite an existing entry or save as new"
                         style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
                   {/* bookmark icon */}
                   <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
@@ -4118,6 +4130,94 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                           d="M6 3h12v18l-6-4-6 4z"/>
                   </svg>
                 </button>
+                {saveDialogOpen && (() => {
+                  const curType = (viewState.rotationX ?? 0) < 10 ? '2D' : '3D';
+                  const cam = cameraOnly(viewStateRef.current || viewState);
+                  // Built-ins available for overwrite, filtered by type.
+                  const overwriteable = [];
+                  if (curType === '2D') overwriteable.push({ id: '__builtin_2d', name: '2D' });
+                  if (curType === '3D') overwriteable.push({ id: '__builtin_3d_collapsed', name: '3D Collapsed' });
+                  // User-saved views of the same type.
+                  savedViews.forEach((v) => {
+                    const vType = (v.rotationX ?? 0) < 10 ? '2D' : '3D';
+                    if (vType === curType) overwriteable.push({ id: v.id, name: v.name, isSaved: true });
+                  });
+                  const overwrite = (item) => {
+                    if (item.isSaved) {
+                      setSavedViews((cur) => cur.map((v) => v.id === item.id ? { ...v, ...cam } : v));
+                    } else {
+                      setViewOverrides((o) => ({ ...o, [item.id]: cam }));
+                    }
+                    setSaveDialogOpen(false);
+                  };
+                  const submitNew = () => {
+                    const trimmed = saveDialogName.trim();
+                    if (!trimmed) return;
+                    setSavedViews((cur) => [...cur, {
+                      id: Math.random().toString(36).slice(2, 10),
+                      name: trimmed, ...cam,
+                    }]);
+                    setSaveDialogName('');
+                    setSaveDialogOpen(false);
+                  };
+                  return (
+                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6,
+                                  background: '#ffffff', border: '1px solid #e4e4e7',
+                                  borderRadius: 6, padding: 6,
+                                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                  zIndex: 100, minWidth: 240, color: '#09090b' }}
+                         onMouseDown={(e) => e.stopPropagation()}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: '#71717a',
+                                    letterSpacing: 0.6, padding: '4px 6px' }}>
+                        SAVE {curType} VIEW
+                      </div>
+                      <form onSubmit={(e) => { e.preventDefault(); submitNew(); }}
+                            style={{ display: 'flex', gap: 4, padding: '4px 4px 6px' }}>
+                        <input value={saveDialogName} autoFocus
+                               onChange={(e) => setSaveDialogName(e.target.value)}
+                               placeholder="New view name…"
+                               style={{ flex: 1, fontSize: 12, padding: '5px 7px',
+                                        border: '1px solid #e4e4e7', borderRadius: 4,
+                                        outline: 'none', color: '#09090b' }} />
+                        <button type="submit" disabled={!saveDialogName.trim()}
+                                style={{ fontSize: 11, padding: '5px 10px',
+                                         background: saveDialogName.trim() ? '#09090b' : '#e4e4e7',
+                                         color: saveDialogName.trim() ? '#fafafa' : '#a1a1aa',
+                                         border: 'none', borderRadius: 4, fontWeight: 600,
+                                         cursor: saveDialogName.trim() ? 'pointer' : 'default' }}>
+                          Save
+                        </button>
+                      </form>
+                      {overwriteable.length > 0 && (
+                        <>
+                          <div style={{ height: 1, background: '#e4e4e7', margin: '4px 4px' }} />
+                          <div style={{ fontSize: 10, color: '#71717a', padding: '4px 6px' }}>
+                            Or overwrite existing
+                          </div>
+                          {overwriteable.map((item) => (
+                            <button key={item.id} onClick={() => overwrite(item)}
+                                    title={`Overwrite "${item.name}" with the current camera`}
+                                    style={{ display: 'block', width: '100%', textAlign: 'left',
+                                             padding: '6px 8px', fontSize: 12,
+                                             background: 'transparent', border: 'none',
+                                             borderRadius: 4, cursor: 'pointer',
+                                             color: '#09090b' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = '#f4f4f5'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+                              {item.name}
+                              {!item.isSaved && (
+                                <span style={{ marginLeft: 6, fontSize: 10, color: '#71717a' }}>
+                                  (built-in)
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+                </div>
                 <button onClick={save} disabled={!dirty}
                         title={dirty ? 'Save settings — persist changes to settings.json' : 'No changes to save'}
                         style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
