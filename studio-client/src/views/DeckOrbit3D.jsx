@@ -254,7 +254,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                                        // sidebar without lifting the state out.
                                        customizationTarget = null,
                                        tourTarget = null,
-                                       controlsTarget = null }) {
+                                       controlsTarget = null,
+                                       headerActionsTarget = null }) {
   const show = (k) => chrome[k] !== false;
   const [showBuildings, setShowBuildings] = useState(true);
   const [showRoads, setShowRoads] = useState(true);
@@ -3591,12 +3592,6 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 const isDragOver = dragOverLayerId === l.id && dragLayerId && dragLayerId !== l.id;
                 return (
                   <div key={l.id}
-                       draggable
-                       onDragStart={(e) => {
-                         setDragLayerId(l.id);
-                         try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', l.id); } catch (_) {}
-                       }}
-                       onDragEnd={() => { setDragLayerId(null); setDragOverLayerId(null); }}
                        onDragOver={(e) => {
                          if (!dragLayerId || dragLayerId === l.id) return;
                          e.preventDefault();
@@ -3628,9 +3623,20 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                           boxShadow: isDragOver ? 'inset 0 2px 0 0 #4c8cdc' : 'none' }}>
                   {/* Line 1: drag handle | eye | index+name | count | delete */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 6px 2px' }}>
-                    <span title="Drag to reorder"
+                    {/* Only the dots are draggable — clicking the rest of
+                        the row (inputs, buttons, name) won't initiate
+                        the row drag. */}
+                    <span draggable
+                          onDragStart={(e) => {
+                            setDragLayerId(l.id);
+                            try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', l.id); } catch (_) {}
+                          }}
+                          onDragEnd={() => { setDragLayerId(null); setDragOverLayerId(null); }}
+                          title="Drag to reorder"
                           style={{ cursor: 'grab', color: '#bdb6a4', fontSize: 11, lineHeight: 1,
-                                   userSelect: 'none', padding: '0 2px' }}>
+                                   userSelect: 'none', padding: '0 4px', alignSelf: 'stretch',
+                                   display: 'inline-flex', alignItems: 'center',
+                                   touchAction: 'none' }}>
                       ⋮⋮
                     </span>
                     <button onClick={() => updateLayer({ visible: !visible })}
@@ -3877,8 +3883,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       {(() => {
         const inPortal = !!controlsTarget;
         const outerStyle = inPortal ? {
+          flex: 1, minHeight: 0, width: '100%',
           display: 'flex', flexDirection: 'column',
-          alignItems: 'center', gap: 8, padding: '8px 4px',
+          alignItems: 'center', gap: 8, padding: '8px 0',
         } : {
           position: 'absolute', right: 16,
           top: 'calc(var(--header-inset, 0px) + 14px)',
@@ -3888,11 +3895,55 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
           alignItems: 'center', gap: 8,
           transition: 'top 0.22s ease, bottom 0.22s ease',
         };
-        // In the sidebar there's no fixed parent height to flex into, so
-        // give each tall-slider row a definite height instead of flex:1.
-        const sliderRowStyle = inPortal
-          ? { display: 'flex', gap: 1, alignItems: 'stretch', height: 160, minHeight: 0, width: 108 }
-          : { display: 'flex', gap: 1, alignItems: 'stretch', flex: 1, minHeight: 0, width: 108 };
+        // Both modes share the same flex: the V2 portal target is wired
+        // as a full-height flex column (see v2.css), so flex:1 fills the
+        // sidebar exactly like it fills the canvas overlay.
+        const sliderRowStyle = { display: 'flex', gap: 1, alignItems: 'stretch',
+                                 flex: 1, minHeight: 0, width: 108 };
+        // Hand / Reset / Photo / Save-view / Save-settings cluster.
+        // Rendered inline at the bottom of the canvas-overlay stack, or
+        // portaled into the V2 header (next to Sign out) when set.
+        const actionsCluster = (
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}
+               onMouseDown={(e) => e.stopPropagation()}>
+            <button title="hand tool — drag to pan instead of rotate"
+                    onClick={() => setPanMode((p) => !p)}
+                    style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
+                             background: panMode ? '#1a1a1a' : 'rgba(255,255,255,0.92)',
+                             color: panMode ? '#fff' : '#3a342c' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                <path fill="currentColor" d="M9 11V4.5a1.5 1.5 0 0 1 3 0V11h.5V3.5a1.5 1.5 0 0 1 3 0V11h.5V5.5a1.5 1.5 0 0 1 3 0v8.4c0 4.36-3.14 7.6-7.5 7.6-3.5 0-5.13-1.96-6.7-4.55l-1.74-2.86a1.5 1.5 0 0 1 2.45-1.72L6.5 14V6.5a1.5 1.5 0 0 1 3 0V11Z"/>
+              </svg>
+            </button>
+            <button title="reset camera to default view"
+                    onClick={resetCamera}
+                    style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                      d="M20 11A8 8 0 1 0 6.3 17.7M20 4v6h-6"/>
+              </svg>
+            </button>
+            <button title={photoIncludeUi ? 'save PNG of current view (incl. UI)' : 'save PNG of current view (no UI)'}
+                    onClick={savePhoto}
+                    style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
+                <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                      d="M3 8h3l2-3h8l2 3h3v12H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
+              </svg>
+            </button>
+            {show('save') && (
+              <>
+                <button onClick={saveCurrentView}
+                        title="bookmark the current camera position under a name"
+                        style={{ ...btn, padding: '5px 8px', fontSize: 11,
+                                 background: '#fff', color: '#3a342c' }}>
+                  Save view
+                </button>
+                <SaveButton dirty={dirty} save={save} />
+              </>
+            )}
+          </div>
+        );
         const stack = (
           <div style={outerStyle} onMouseDown={(e) => e.stopPropagation()}>
             {/* Row 1 — Compass */}
@@ -3958,50 +4009,17 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
               </div>
             )}
 
-            {/* Row 6 — Hand, Reset, Save photo */}
-            <div style={{ display: 'flex', gap: 5 }}>
-              <button title="hand tool — drag to pan instead of rotate"
-                      onClick={() => setPanMode((p) => !p)}
-                      style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
-                               background: panMode ? '#1a1a1a' : 'rgba(255,255,255,0.92)',
-                               color: panMode ? '#fff' : '#3a342c' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
-                  <path fill="currentColor" d="M9 11V4.5a1.5 1.5 0 0 1 3 0V11h.5V3.5a1.5 1.5 0 0 1 3 0V11h.5V5.5a1.5 1.5 0 0 1 3 0v8.4c0 4.36-3.14 7.6-7.5 7.6-3.5 0-5.13-1.96-6.7-4.55l-1.74-2.86a1.5 1.5 0 0 1 2.45-1.72L6.5 14V6.5a1.5 1.5 0 0 1 3 0V11Z"/>
-                </svg>
-              </button>
-              <button title="reset camera to default view"
-                      onClick={resetCamera}
-                      style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
-                  <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                        d="M20 11A8 8 0 1 0 6.3 17.7M20 4v6h-6"/>
-                </svg>
-              </button>
-              <button title={photoIncludeUi ? 'save PNG of current view (incl. UI)' : 'save PNG of current view (no UI)'}
-                      onClick={savePhoto}
-                      style={{ ...btn, width: 28, height: 28, lineHeight: '26px' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-hidden>
-                  <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                        d="M3 8h3l2-3h8l2 3h3v12H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/>
-                </svg>
-              </button>
-            </div>
-
-            {/* Row 7 — Save view (named camera bookmark) + Save settings */}
-            {show('save') && (
-              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                <button onClick={saveCurrentView}
-                        title="bookmark the current camera position (X, Y, Z, tilt, zoom, rotation) under a name"
-                        style={{ ...btn, padding: '5px 8px', fontSize: 11,
-                                 background: '#fff', color: '#3a342c' }}>
-                  Save view
-                </button>
-                <SaveButton dirty={dirty} save={save} />
-              </div>
-            )}
+            {/* Action cluster — inline only when no header-actions portal
+                target exists; otherwise it ships to the V2 header. */}
+            {!headerActionsTarget && actionsCluster}
           </div>
         );
-        return inPortal ? createPortal(stack, controlsTarget) : stack;
+        return (
+          <>
+            {inPortal ? createPortal(stack, controlsTarget) : stack}
+            {headerActionsTarget && createPortal(actionsCluster, headerActionsTarget)}
+          </>
+        );
       })()}
     </div>
   );

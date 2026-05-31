@@ -123,7 +123,22 @@ body {
   transition: width 180ms ease;
   z-index: 10;
 }
-.v2-right-sidebar .v2-sidebar-content { padding: 14px 8px; }
+.v2-right-sidebar .v2-sidebar-content {
+  padding: 8px 4px;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.v2-right-sidebar .v2-sb-group {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: 0;
+}
+.v2-right-sidebar .v2-sb-group-label { flex-shrink: 0; }
+.v2-right-sidebar .v2-sb-portal {
+  flex: 1; min-height: 0;
+  padding: 4px 0;
+  display: flex; flex-direction: column;
+}
 
 .v2-toc-section { padding: 2px 0; }
 .v2-toc-section-btn { padding: 6px 8px; }

@@ -14,7 +14,10 @@ import Loader from './views/Loader.jsx';
 
 const SIDEBAR_W_OPEN = 256;
 const SIDEBAR_W_COLLAPSED = 56;
-const RIGHT_W_OPEN = 280;
+// The right sidebar now hosts only the three tall-slider triplets
+// (Rot/Zoom/Tilt + X/Y/Z), each ~108 px wide. Width = bar width + small
+// horizontal padding; nothing wider sits in here anymore.
+const RIGHT_W_OPEN = 132;
 const RIGHT_W_COLLAPSED = 0;
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
 
@@ -146,6 +149,7 @@ function ProjectViewPage({ projectId, onSignOut }) {
   const [customizationTarget, setCustomizationTarget] = useState(null);
   const [tourTarget,          setTourTarget]          = useState(null);
   const [controlsTarget,      setControlsTarget]      = useState(null);
+  const [headerActionsTarget, setHeaderActionsTarget] = useState(null);
 
   // Tell the fetch interceptor in main.jsx which project to talk to.
   useEffect(() => {
@@ -187,6 +191,10 @@ function ProjectViewPage({ projectId, onSignOut }) {
             { label: projectName || projectId, current: true },
           ]} />
           <div style={{ flex: 1 }} />
+          {/* Canvas action cluster (hand / reset / photo / save view /
+              save settings) is portaled here from DeckOrbit3D. */}
+          <div ref={setHeaderActionsTarget}
+               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} />
           {isAuthed() && (
             <button onClick={onSignOut} className="v2-link" title="Sign out"
                     style={{ cursor: 'pointer' }}>
