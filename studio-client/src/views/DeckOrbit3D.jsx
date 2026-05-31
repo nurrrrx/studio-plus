@@ -2135,15 +2135,21 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                   : panMode ? 'grab' : 'default' }}>
       <DeckGL ref={deckRef} views={activeView}
               controller={{
-                scrollZoom: false,
+                // 3D orbit uses a custom ctrl-wheel handler (pinch -> zoom-
+                // to-cursor) and disables the default scroll zoom. In 2D
+                // ortho drawing mode there is no custom handler, so wheel
+                // would do nothing — turn deck.gl's scrollZoom on while
+                // drawing so the wheel + trackpad zoom normally.
+                scrollZoom: isDrawing,
                 // While box-select is active, the canvas drag belongs to us
                 // (paints the selection rectangle) — disable deck.gl's own
-                // drag handlers so they don't fight us.
-                dragRotate: !panMode && !boxSelect,
+                // drag handlers so they don't fight us. Drag-rotate is also
+                // meaningless in a top-down ortho view.
+                dragRotate: !panMode && !boxSelect && !isDrawing,
                 dragPan: !boxSelect,
                 // iPad / touch: two-finger pinch zooms, two-finger twist rotates.
                 // touchRotate is off in deck.gl's defaults; we explicitly enable it.
-                touchRotate: true,
+                touchRotate: !isDrawing,
                 touchZoom: true,
               }}
               effects={[flatLighting]}
