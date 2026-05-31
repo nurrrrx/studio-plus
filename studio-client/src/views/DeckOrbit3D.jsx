@@ -2906,6 +2906,54 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         </div>
       )}
 
+      {/* Compact layer legend in the top-left. Each row is the layer's
+          colour swatch + name. Clicking the row toggles that layer's
+          visibility (l.visible). Sits next to the customisation panel's
+          collapse tab and stays visible whether the big panel is open or
+          collapsed. Hidden when there are no custom layers yet. */}
+      {propLayers.length > 0 && (
+        <div style={{ position: 'absolute',
+                      left: 50,    // clears the customisation collapse-tab on the far left
+                      top: 'calc(var(--header-inset, 0px) + 16px)',
+                      zIndex: 5,
+                      background: 'rgba(255,255,255,0.94)',
+                      border: '1px solid var(--line)', borderRadius: 6,
+                      padding: '6px 8px', fontSize: 11,
+                      boxShadow: '0 1px 5px rgba(0,0,0,0.1)',
+                      maxWidth: 220,
+                      maxHeight: 'calc(100% - var(--header-inset, 0px) - var(--footer-inset, 0px) - 32px)',
+                      overflowY: 'auto' }}
+             onMouseDown={(e) => e.stopPropagation()}>
+          <div style={{ color: '#5e564a', fontWeight: 600, marginBottom: 4,
+                        fontSize: 10, letterSpacing: 0.6 }}>LAYERS</div>
+          {propLayers.map((l, i) => {
+            const defaultColor = ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8];
+            const color = l.color || defaultColor;
+            const visible = l.visible !== false;
+            return (
+              <div key={l.id}
+                   onClick={() => setPropLayers((ls) => ls.map((x) =>
+                     x.id === l.id ? { ...x, visible: !visible } : x))}
+                   style={{ display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '3px 0', cursor: 'pointer',
+                            opacity: visible ? 1 : 0.45, color: '#3a342c',
+                            userSelect: 'none' }}
+                   title={visible ? `Hide ${l.name}` : `Show ${l.name}`}>
+                <span style={{ width: 12, height: 12, borderRadius: 2,
+                               background: color,
+                               border: '1px solid rgba(0,0,0,0.18)',
+                               flexShrink: 0 }} />
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden',
+                               textOverflow: 'ellipsis',
+                               textDecoration: visible ? 'none' : 'line-through' }}>
+                  {l.name || 'Untitled'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {show('layers') && (
         <LayersPanel items={[
           { label: 'Free orbit 3D', checked: !!freeOrbit, onChange: (v) => onFreeOrbitChange?.(v) },

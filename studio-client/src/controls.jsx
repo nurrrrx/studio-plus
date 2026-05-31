@@ -305,7 +305,8 @@ function ChevDoubleHoriz({ dir = 'left', size = 13 }) {
 // Customization panel (collapsible to the left). `items` are checkboxes;
 // `children` adds extra controls below them.
 export function LayersPanel({ items = [], children, title = 'Customization' }) {
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed by default — the small chevron tab in the top-left expands.
+  const [collapsed, setCollapsed] = useState(true);
   const headerTop = 'calc(var(--header-inset, 0px) + 16px)';
 
   if (collapsed) {
