@@ -198,7 +198,9 @@ const view = new OrbitView({ orbitAxis: 'Z', fov: 50 });
 // Used only while the user is mid-drawing a polygon / path. Pure 2D
 // top-down with no perspective foreshortening, so click pixel <-> world
 // XY is bijective — every vertex lands exactly under the cursor.
-const orthoView = new OrthographicView({ flipY: false });
+// Wide minZoom..maxZoom so users can zoom right down to a single building
+// while drawing — deck.gl's OrthographicView default range is fairly tight.
+const orthoView = new OrthographicView({ flipY: false, minZoom: -10, maxZoom: 30 });
 // High-ambient lighting so picked colours (especially white) render at full
 // brightness, not greyed-out by directional shading. A faint directional light
 // keeps a hint of 3D form on the building sides.
