@@ -799,34 +799,32 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       if (layer.visible === false) return null;
       const items = propsItems.filter((p) => p.layerId === layer.id);
       if (items.length === 0 && !(layer.polygon && layer.polygon.length >= 3)) return null;
-      // If the layer carries a polygon (saved from a polygon-fill operation),
-      // render that exact shape — otherwise fall back to a convex hull of
-      // whatever props happen to be in the layer.
-      if (layer.polygon && layer.polygon.length >= 3) {
-        const polygon = layer.polygon.map(([x, y]) => [x, y]);
-        let cx = 0, cy = 0;
-        for (const [x, y] of polygon) { cx += x; cy += y; }
-        cx /= polygon.length; cy /= polygon.length;
-        return { id: layer.id, name: layer.name, polygon, centroid: [cx, cy], count: items.length };
-      }
-      // Items are heterogeneous: point-type props have `position`, bike
-      // lanes have `path`, beach / sea polygon-type props have `polygon`.
-      // Flatten every shape to a list of XY tuples so the convex hull
-      // includes them all — and so reading `p.position[0]` doesn't throw
-      // for the path / polygon variants (which have no `position`).
+      // Build the point cloud the slab needs to wrap: every prop position
+      // plus, if the layer has a saved polygon (from a Configure-fill
+      // operation), all of that polygon's vertices too. Previously we
+      // returned the saved polygon verbatim and ignored the props — that
+      // worked when the user only ever filled once, but if they later
+      // placed more props beyond the original fill boundary the slab
+      // didn't grow to cover them. Convex-hulling the UNION guarantees the
+      // slab always sits under every prop in the layer.
+      // (Items are heterogeneous: point-type props have `position`, bike
+      // lanes have `path`, beach / sea polygon-type props have `polygon`.)
       const pts = items.flatMap((p) => {
         if (Array.isArray(p.position)) return [[p.position[0], p.position[1]]];
         if (Array.isArray(p.path)) return p.path.map(([x, y]) => [x, y]);
         if (Array.isArray(p.polygon)) return p.polygon.map(([x, y]) => [x, y]);
         return [];
       });
+      if (Array.isArray(layer.polygon)) {
+        for (const v of layer.polygon) if (Array.isArray(v)) pts.push([v[0], v[1]]);
+      }
       let polygon;
       if (pts.length >= 3) {
         const hull = convexHull(pts);
         let cx = 0, cy = 0;
         for (const [x, y] of hull) { cx += x; cy += y; }
         cx /= hull.length; cy /= hull.length;
-        const PAD = 6;
+        const PAD = 10;
         polygon = hull.map(([x, y]) => {
           const dx = x - cx, dy = y - cy;
           const len = Math.hypot(dx, dy) || 1;
@@ -839,7 +837,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
           if (x < minX) minX = x; if (x > maxX) maxX = x;
           if (y < minY) minY = y; if (y > maxY) maxY = y;
         }
-        const PAD = 6;
+        const PAD = 10;
         polygon = [
           [minX - PAD, minY - PAD], [maxX + PAD, minY - PAD],
           [maxX + PAD, maxY + PAD], [minX - PAD, maxY + PAD],
