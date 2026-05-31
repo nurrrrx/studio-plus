@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadGeo } from './geo.js';
+import { isAuthed, clearToken } from './api.js';
 import MapView from './views/MapView.jsx';
 import DeckOrbit3D from './views/DeckOrbit3D.jsx';
 import Projects from './views/Projects.jsx';
@@ -54,11 +55,23 @@ export default function App() {
 
   // Blueprint splash: stays until the user signs in or clicks "Continue as
   // guest". onDone fades the splash and we unmount it after the CSS fade.
+  // After sign-in (or if a valid token already exists), the loader
+  // auto-dismisses itself in 3s; the parent only fades/unmounts.
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [loaderMounted, setLoaderMounted] = useState(true);
-  const dismissLoader = () => {
+  const [authed, setAuthed] = useState(isAuthed);
+  const dismissLoader = ({ authed: didAuth } = {}) => {
+    if (didAuth) setAuthed(true);
     setLoaderVisible(false);
     setTimeout(() => setLoaderMounted(false), 700);
+  };
+  const signOut = () => {
+    clearToken();
+    setAuthed(false);
+    setPage('projects');
+    // Bring the splash back so the user can sign in again or stay as guest.
+    setLoaderMounted(true);
+    setLoaderVisible(true);
   };
 
   // Currently opened project ID. The fetch interceptor in main.jsx reads
@@ -226,6 +239,12 @@ export default function App() {
           {page === 'project' && (
             <button className={`tab ${gearOpen ? 'on' : ''}`} title="show / hide on-screen controls"
                     onClick={() => setGearOpen((o) => !o)} style={{ fontSize: 16, lineHeight: 1 }}>⚙</button>
+          )}
+          {authed && (
+            <button className="tab" title="sign out" onClick={signOut}
+                    style={{ fontSize: 11, letterSpacing: 0.3 }}>
+              Sign out
+            </button>
           )}
           {/* Pin/auto-hide chevron — rightmost, after the gear */}
           <button className="tab icon-btn"

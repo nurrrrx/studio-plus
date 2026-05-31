@@ -2,7 +2,7 @@
 // accent lines) and a radial vignette. Project cubes are isometric SVGs
 // arranged in a centred row, sized so they visually rest on the grid texture.
 import { useEffect, useState } from 'react';
-import { listProjects, createProject, isAuthed, backendConfigured } from '../api.js';
+import { listProjects, createProject, deleteProject, isAuthed, backendConfigured } from '../api.js';
 
 const DEFAULT_PROJECT = {
   id: 'alzeina',
@@ -46,6 +46,18 @@ export default function Projects({ activeTitle, activeId, onOpen, onRename }) {
     }
   };
 
+  const removeProject = async (p) => {
+    if (!window.confirm(`Delete project "${p.name}"? This can't be undone.`)) return;
+    setProjects((ps) => ps.filter((x) => x.id !== p.id));
+    if (backendConfigured() && isAuthed()) {
+      try { await deleteProject(p.id); }
+      catch (e) { /* swallow; if it fails, a refresh will bring it back */ }
+    }
+  };
+  // Only show the ✕ for projects we can actually delete: requires auth and
+  // we don't allow deleting the project that's currently open.
+  const canDelete = backendConfigured() && isAuthed();
+
   return (
     <div className="projects-page">
       <div className="projects-bg-grid" />
@@ -57,6 +69,7 @@ export default function Projects({ activeTitle, activeId, onOpen, onRename }) {
                     sub={p.location}
                     paletteIndex={i}
                     onClick={() => onOpen?.(p)}
+                    onDelete={canDelete && p.id !== (activeId || 'alzeina') ? () => removeProject(p) : undefined}
                     onDoubleClick={() => {
                       const next = prompt('Rename project', p.name);
                       if (next && next.trim()) {
@@ -85,11 +98,21 @@ const PALETTES = [
   { top: '#3b4d72', right: '#283455', left: '#1a2240', stroke: '#88a2c8' },
 ];
 
-function CubeTile({ name, sub, paletteIndex = 0, isNew, onClick, onDoubleClick }) {
+function CubeTile({ name, sub, paletteIndex = 0, isNew, onClick, onDoubleClick, onDelete }) {
   return (
     <button className={`cube-tile ${isNew ? 'new' : ''}`}
             onClick={onClick} onDoubleClick={onDoubleClick}
             title={onDoubleClick ? 'Click to open · double-click to rename' : 'Click to open'}>
+      {/* Per-cube delete trigger. Span (not button) so we don't nest buttons.
+          Stops propagation so it doesn't also open the project. */}
+      {onDelete && (
+        <span role="button" tabIndex={0} aria-label="Delete project"
+              className="cube-delete" title="Delete project"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onDelete(); } }}>
+          ×
+        </span>
+      )}
       <div className="cube-svg-wrap">
         <Cube isNew={isNew} palette={PALETTES[paletteIndex % PALETTES.length]} />
       </div>

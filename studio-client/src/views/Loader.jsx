@@ -1,15 +1,28 @@
-// Blueprint splash. Doubles as the auth gate: while the splash is visible
-// the user can sign in (read+write) or skip (read-only). The splash stays
-// until the user takes an action, then fades out via the parent.
-import { useState } from 'react';
+// Blueprint splash. Doubles as the auth gate.
+// - Not signed in: show username/password form. Submit -> auth, then
+//   auto-dismiss 3s later. "Continue as guest" dismisses immediately
+//   in read-only mode.
+// - Signed in (token already in localStorage on load, or just submitted):
+//   no Enter button — show a "Signed in" message and auto-dismiss 3s later.
+import { useEffect, useState } from 'react';
 import { login, isAuthed, backendConfigured } from '../api.js';
+
+const AUTO_DISMISS_MS = 3000;
 
 export default function Loader({ visible, onDone }) {
   const [u, setU] = useState('');
   const [p, setP] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const alreadyIn = isAuthed();
+  const [signedIn, setSignedIn] = useState(isAuthed);
+
+  // Once the user is signed in (already on mount, or after a successful
+  // submit), auto-advance to the projects page after a short pause.
+  useEffect(() => {
+    if (!signedIn || !visible) return;
+    const id = setTimeout(() => onDone?.({ authed: true }), AUTO_DISMISS_MS);
+    return () => clearTimeout(id);
+  }, [signedIn, visible, onDone]);
 
   const submit = async (e) => {
     e?.preventDefault?.();
@@ -17,7 +30,7 @@ export default function Loader({ visible, onDone }) {
     setBusy(true); setErr('');
     try {
       await login(u, p);
-      onDone?.({ authed: true });
+      setSignedIn(true);
     } catch (e) {
       setErr(e.message || 'Sign-in failed.');
     } finally {
@@ -34,12 +47,10 @@ export default function Loader({ visible, onDone }) {
           studio<sup className="loader-blueprint-plus">+</sup>
         </div>
 
-        {alreadyIn ? (
+        {signedIn ? (
           <>
+            <div className="loader-signed-in">Signed in. Loading projects…</div>
             <div className="loader-blueprint-progress"><span /></div>
-            <button className="loader-skip" type="button" onClick={() => onDone?.({ authed: true })}>
-              Enter
-            </button>
           </>
         ) : (
           <form className="loader-login" onSubmit={submit} autoComplete="off">
