@@ -853,6 +853,13 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 
   // Unproject the click pixel to the current surface plane (z = surfaceZ).
   const computeSurfacePos = (info) => {
+    // Prefer info.coordinate — deck.gl computes it from the same picking pass
+    // that drew the scene, so it's pixel-perfect with what's on screen. The
+    // CPU-side vp.unproject path we used to try first can drift (DPR, camera
+    // matrix updates) and land the vertex somewhere visibly off the click.
+    if (info?.coordinate) return [info.coordinate[0], info.coordinate[1], surfaceZ];
+    // Fallback: reproject via the viewport if for some reason coordinate is
+    // missing (e.g. clicks outside the canvas bounds during a drag).
     const deck = deckRef.current?.deck;
     const vp = deck?.getViewports?.()[0];
     if (vp && info?.x != null && info?.y != null) {
@@ -861,7 +868,6 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         return [w[0], w[1], surfaceZ];
       } catch {}
     }
-    if (info?.coordinate) return [info.coordinate[0], info.coordinate[1], surfaceZ];
     return null;
   };
 
