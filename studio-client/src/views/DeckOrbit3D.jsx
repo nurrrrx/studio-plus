@@ -366,6 +366,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const [newLayerName, setNewLayerName] = useState('');
   const [dragLayerId, setDragLayerId] = useState(null);
   const [dragOverLayerId, setDragOverLayerId] = useState(null);
+  // Bottom-left LAYERS legend (canvas overlay). shadcn-style Collapsible:
+  // trigger sits at the bottom; checkbox list expands upward when open.
+  const [layersLegendOpen, setLayersLegendOpen] = useState(true);
+  // Top-left VIEWS combobox: button shows the current view name, dropdown
+  // below it holds a radio-group of saved views. selectedViewId tracks
+  // the radio selection only (camera state is applied via applyView).
+  const [viewsComboOpen, setViewsComboOpen] = useState(false);
+  const [selectedViewId, setSelectedViewId] = useState(null);
   const [rejectionMsg, setRejectionMsg] = useState(null); // brief on-canvas toast
   const rejectionTimerRef = useRef(null);
   // When the user drags one of the in-progress polygon / lane vertices, we
@@ -3076,89 +3084,135 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         </div>
       )}
 
-      {/* Top-left stack: clickable Layers legend (toggle visibility) and
-          Saved Views panel (camera bookmarks). Both sit to the right of
-          the Customization panel's collapse tab. Each box is independent
-          and only appears when it has rows to show. */}
-      {(propLayers.length > 0 || savedViews.length > 0) && (
+      {/* Bottom-left LAYERS collapsible. No card / backdrop — just the
+          trigger chip plus a stack of checkboxes that expands UPWARD
+          above the trigger. Mirrors the shadcn Collapsible pattern. */}
+      {propLayers.length > 0 && (
         <div style={{ position: 'absolute',
-                      left: 50,
-                      top: 'calc(var(--header-inset, 0px) + 16px)',
+                      left: 16,
+                      bottom: 'calc(var(--footer-inset, 0px) + 12px)',
                       zIndex: 5,
-                      display: 'flex', flexDirection: 'column', gap: 8,
-                      maxHeight: 'calc(100% - var(--header-inset, 0px) - var(--footer-inset, 0px) - 32px)',
+                      display: 'flex', flexDirection: 'column', gap: 6,
+                      alignItems: 'flex-start',
                       pointerEvents: 'none' }}>
-          {propLayers.length > 0 && (
-            <div style={{ background: '#09090b',
-                          border: '1px solid #27272a', borderRadius: 2,
-                          padding: '6px 8px', fontSize: 11,
-                          boxShadow: '0 1px 5px rgba(0,0,0,0.45)',
-                          maxWidth: 240, overflowY: 'auto', pointerEvents: 'auto',
-                          color: '#fafafa' }}
+          {layersLegendOpen && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4,
+                          pointerEvents: 'auto' }}
                  onMouseDown={(e) => e.stopPropagation()}>
-              <div style={{ color: '#a1a1aa', fontWeight: 600, marginBottom: 4,
-                            fontSize: 10, letterSpacing: 0.6 }}>LAYERS</div>
               {propLayers.map((l, i) => {
                 const defaultColor = ['#4cc4dc','#78c460','#dca84c','#dc608c','#b478dc','#4cdcc4','#dcdc60','#4c8cdc'][i % 8];
                 const color = l.color || defaultColor;
                 const visible = l.visible !== false;
                 return (
-                  <div key={l.id}
-                       onClick={() => setPropLayers((ls) => ls.map((x) =>
-                         x.id === l.id ? { ...x, visible: !visible } : x))}
-                       style={{ display: 'flex', alignItems: 'center', gap: 6,
-                                padding: '3px 0', cursor: 'pointer',
-                                opacity: visible ? 1 : 0.45, color: '#fafafa',
-                                userSelect: 'none' }}
-                       title={visible ? `Hide ${l.name}` : `Show ${l.name}`}>
+                  <label key={l.id}
+                         style={{ display: 'flex', alignItems: 'center', gap: 6,
+                                  cursor: 'pointer', userSelect: 'none',
+                                  fontSize: 12, color: '#09090b',
+                                  textShadow: '0 0 6px rgba(255,255,255,0.85), 0 0 2px rgba(255,255,255,0.85)',
+                                  opacity: visible ? 1 : 0.55 }}
+                         title={visible ? `Hide ${l.name}` : `Show ${l.name}`}>
+                    <input type="checkbox" checked={visible}
+                           onChange={() => setPropLayers((ls) => ls.map((x) =>
+                             x.id === l.id ? { ...x, visible: !visible } : x))}
+                           style={{ margin: 0, cursor: 'pointer' }} />
                     <span style={{ width: 12, height: 12, borderRadius: 2,
-                                   background: color,
-                                   border: '1px solid rgba(0,0,0,0.18)',
-                                   flexShrink: 0 }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden',
-                                   textOverflow: 'ellipsis',
+                                   background: color, flexShrink: 0,
+                                   boxShadow: '0 0 0 1px rgba(0,0,0,0.25)' }} />
+                    <span style={{ whiteSpace: 'nowrap',
                                    textDecoration: visible ? 'none' : 'line-through' }}>
                       {l.name || 'Untitled'}
                     </span>
-                  </div>
+                  </label>
                 );
               })}
             </div>
           )}
-          {savedViews.length > 0 && (
-            <div style={{ background: '#09090b',
-                          border: '1px solid #27272a', borderRadius: 2,
-                          padding: '6px 8px', fontSize: 11,
-                          boxShadow: '0 1px 5px rgba(0,0,0,0.45)',
-                          maxWidth: 240, overflowY: 'auto', pointerEvents: 'auto',
-                          color: '#fafafa' }}
-                 onMouseDown={(e) => e.stopPropagation()}>
-              <div style={{ color: '#a1a1aa', fontWeight: 600, marginBottom: 4,
-                            fontSize: 10, letterSpacing: 0.6 }}>VIEWS</div>
-              {savedViews.map((view) => (
-                <div key={view.id}
-                     style={{ display: 'flex', alignItems: 'center', gap: 4,
-                              padding: '3px 0', color: '#fafafa', userSelect: 'none' }}>
-                  <span onClick={() => applyView(view)}
-                        title={`Apply ${view.name}`}
-                        style={{ flex: 1, cursor: 'pointer', whiteSpace: 'nowrap',
-                                 overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {view.name}
-                  </span>
-                  <button onClick={() => renameView(view.id)} title="rename"
-                          style={{ border: 'none', background: 'transparent',
-                                   cursor: 'pointer', color: '#a1a1aa', padding: 0,
-                                   fontSize: 12, lineHeight: 1 }}>✎</button>
-                  <button onClick={() => deleteView(view.id)} title="delete"
-                          style={{ border: 'none', background: 'transparent',
-                                   cursor: 'pointer', color: '#ef4444', padding: 0,
-                                   fontSize: 13, lineHeight: 1 }}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
+          <button onClick={() => setLayersLegendOpen((o) => !o)}
+                  title={layersLegendOpen ? 'Collapse layers' : 'Expand layers'}
+                  style={{ pointerEvents: 'auto',
+                           display: 'inline-flex', alignItems: 'center', gap: 6,
+                           padding: '4px 10px', fontSize: 10, fontWeight: 600,
+                           letterSpacing: 0.6, color: '#09090b',
+                           background: 'transparent', border: 'none',
+                           cursor: 'pointer',
+                           textShadow: '0 0 6px rgba(255,255,255,0.85), 0 0 2px rgba(255,255,255,0.85)' }}>
+            LAYERS
+            <svg width="10" height="10" viewBox="0 0 24 24" aria-hidden
+                 style={{ transform: layersLegendOpen ? 'rotate(0deg)' : 'rotate(180deg)',
+                          transition: 'transform 140ms ease' }}>
+              <path fill="none" stroke="currentColor" strokeWidth="2.4"
+                    strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
         </div>
       )}
+
+      {/* Top-left VIEWS combobox: shadcn-style trigger button, opens a
+          panel below with a radio-group of saved views. */}
+      {savedViews.length > 0 && (() => {
+        const selected = savedViews.find((v) => v.id === selectedViewId);
+        return (
+          <div style={{ position: 'absolute',
+                        left: 16,
+                        top: 'calc(var(--header-inset, 0px) + 16px)',
+                        zIndex: 6,
+                        width: 220, pointerEvents: 'auto' }}
+               onMouseDown={(e) => e.stopPropagation()}>
+            <button onClick={() => setViewsComboOpen((o) => !o)}
+                    title={viewsComboOpen ? 'Close views' : 'Select a view'}
+                    style={{ width: '100%',
+                             display: 'flex', alignItems: 'center', gap: 8,
+                             padding: '6px 10px', fontSize: 12,
+                             background: 'rgba(255,255,255,0.94)',
+                             border: '1px solid #e4e4e7', borderRadius: 6,
+                             color: selected ? '#09090b' : '#71717a',
+                             cursor: 'pointer', textAlign: 'left',
+                             boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>
+              <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden',
+                             textOverflow: 'ellipsis' }}>
+                {selected ? selected.name : 'Select a view'}
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden
+                   style={{ flexShrink: 0, color: '#71717a',
+                            transform: viewsComboOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform 140ms ease' }}>
+                <path fill="none" stroke="currentColor" strokeWidth="2.2"
+                      strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {viewsComboOpen && (
+              <div style={{ marginTop: 4,
+                            background: 'rgba(255,255,255,0.98)',
+                            border: '1px solid #e4e4e7', borderRadius: 6,
+                            boxShadow: '0 6px 18px rgba(0,0,0,0.08)',
+                            padding: 4, maxHeight: 300, overflowY: 'auto' }}>
+                {savedViews.map((view) => {
+                  const checked = selectedViewId === view.id;
+                  return (
+                    <label key={view.id}
+                           style={{ display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '6px 8px', borderRadius: 4,
+                                    cursor: 'pointer', fontSize: 12,
+                                    color: '#09090b',
+                                    background: checked ? '#f4f4f5' : 'transparent' }}
+                           onMouseEnter={(e) => { if (!checked) e.currentTarget.style.background = '#fafafa'; }}
+                           onMouseLeave={(e) => { if (!checked) e.currentTarget.style.background = 'transparent'; }}>
+                      <input type="radio" name="saved-views"
+                             checked={checked}
+                             onChange={() => { setSelectedViewId(view.id); applyView(view); }}
+                             style={{ margin: 0, cursor: 'pointer' }} />
+                      <span style={{ flex: 1, whiteSpace: 'nowrap',
+                                     overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {view.name}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {show('layers') && (
         <LayersPanel portalTarget={customizationTarget} items={[
