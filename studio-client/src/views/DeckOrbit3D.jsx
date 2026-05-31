@@ -3232,8 +3232,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                 onSelect: () => {
                   setLayersExploded(false);
                   const o = viewOverrides['__builtin_2d'];
+                  // rotationX is tilt FROM HORIZONTAL — 89 ≈ straight down,
+                  // 0 = looking from the side. 2D wants top-down.
                   if (o) setViewState((v) => ({ ...v, ...o }));
-                  else setViewState((v) => ({ ...v, rotationOrbit: 0, rotationX: 0,
+                  else setViewState((v) => ({ ...v, rotationOrbit: 0, rotationX: 89,
                                               target: [0, 0, targetZ], zoom: homeView.zoom }));
                 } },
               { id: '__builtin_3d_collapsed', name: '3D Collapsed',
@@ -4013,9 +4015,11 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                         setLayersExploded(false);
                         return;
                       }
-                      // 2D-ish view (very low tilt)? Tween camera to the
+                      // 2D-ish view (near-top-down)? Tween camera to the
                       // 3D home view first, then trigger the explode.
-                      const is2D = (viewState.rotationX ?? 0) < 5;
+                      // rotationX is tilt from horizontal, so high values
+                      // (≥80°) mean nearly straight-down = 2D.
+                      const is2D = (viewState.rotationX ?? 0) > 80;
                       if (!is2D) { setLayersExploded(true); return; }
                       const fromVS = viewStateRef.current || viewState;
                       const from = {
@@ -4131,7 +4135,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                   </svg>
                 </button>
                 {saveDialogOpen && (() => {
-                  const curType = (viewState.rotationX ?? 0) < 10 ? '2D' : '3D';
+                  // rotationX is tilt from horizontal: high (>80°) ≈ top-down (2D),
+                  // anything lower is a perspective / side view (3D).
+                  const isTopDown = (rx) => (rx ?? 0) > 80;
+                  const curType = isTopDown(viewState.rotationX) ? '2D' : '3D';
                   const cam = cameraOnly(viewStateRef.current || viewState);
                   // Built-ins available for overwrite, filtered by type.
                   const overwriteable = [];
@@ -4139,7 +4146,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                   if (curType === '3D') overwriteable.push({ id: '__builtin_3d_collapsed', name: '3D Collapsed' });
                   // User-saved views of the same type.
                   savedViews.forEach((v) => {
-                    const vType = (v.rotationX ?? 0) < 10 ? '2D' : '3D';
+                    const vType = isTopDown(v.rotationX) ? '2D' : '3D';
                     if (vType === curType) overwriteable.push({ id: v.id, name: v.name, isSaved: true });
                   });
                   const overwrite = (item) => {
