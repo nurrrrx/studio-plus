@@ -8,6 +8,20 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // SPA fallback unpacker — mirror of the one in /index.html.
+      (function () {
+        var BASE = '/studio-plus';
+        var s = window.location.search;
+        var m = s.match(/[?&]p=([^&]+)/);
+        if (m) {
+          var p = decodeURIComponent(m[1]);
+          var qm = s.match(/[?&]q=([^&]+)/);
+          var q = qm ? '?' + decodeURIComponent(qm[1]) : '';
+          window.history.replaceState(null, '', BASE + p + q + window.location.hash);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

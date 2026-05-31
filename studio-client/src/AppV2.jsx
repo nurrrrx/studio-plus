@@ -6,19 +6,110 @@
 
 import { useEffect, useState } from 'react';
 import './v2.css';
+import { listProjects, backendConfigured } from './api.js';
 
 const SIDEBAR_W_OPEN = 256;
 const SIDEBAR_W_COLLAPSED = 56;
 const RIGHT_W_OPEN = 280;
 const RIGHT_W_COLLAPSED = 0;
+const BASE = '/studio-plus';
 
-export default function AppV2() {
+// Top-level switch: with a projectId we show the full project view
+// (both sidebars, sample TOC, big pane). Without one we show the
+// projects-list page — no sidebars, just the breadcrumb + a grid of
+// project cards. The /studio-plus/v2/ URL hits the listing; clicking
+// a card navigates to /studio-plus/v2/<id>/.
+export default function AppV2({ projectId = null }) {
+  if (!projectId) return <ProjectsListPage />;
+  return <ProjectViewPage projectId={projectId} />;
+}
+
+// ---------- Projects list (no sidebars) -------------------------------------
+
+function ProjectsListPage() {
+  const [projects, setProjects] = useState(null);
+  const [loadErr, setLoadErr] = useState(null);
+  useEffect(() => {
+    if (!backendConfigured()) {
+      // Dev / no backend → show a single hardcoded project entry so the
+      // page isn't empty.
+      setProjects([{ id: 'alzeina', name: 'Al Zeina — Axonometric Study', location: 'Al Raha Beach, Abu Dhabi' }]);
+      return;
+    }
+    listProjects()
+      .then((list) => setProjects(list || []))
+      .catch((e) => setLoadErr(e.message || 'Could not reach the server'));
+  }, []);
+  return (
+    <div className="v2-root">
+      <div className="v2-inset" style={{ marginLeft: 0, marginRight: 0 }}>
+        <header className="v2-header">
+          <Breadcrumb crumbs={[
+            { label: 'studio+', href: '#' },
+            { label: 'projects', current: true },
+          ]} />
+          <div style={{ flex: 1 }} />
+          <a href="../" className="v2-link" title="Back to the canvas app">
+            ← classic view
+          </a>
+        </header>
+        <main className="v2-main">
+          <div className="v2-big-pane" style={{ minHeight: 'auto', padding: 0, background: 'transparent', border: 'none' }}>
+            <div className="v2-big-pane-text" style={{ maxWidth: 720, marginBottom: 16 }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Projects</h2>
+              <p style={{ margin: '6px 0 0', fontSize: 13, color: '#71717a', lineHeight: 1.5 }}>
+                Pick a project to open its detailed view.
+              </p>
+            </div>
+            {loadErr ? (
+              <div style={{ color: '#b03030', fontSize: 13 }}>Couldn't load projects: {loadErr}</div>
+            ) : projects == null ? (
+              <div style={{ color: '#71717a', fontSize: 13 }}>Loading…</div>
+            ) : projects.length === 0 ? (
+              <div style={{ color: '#71717a', fontSize: 13 }}>No projects yet.</div>
+            ) : (
+              <div className="v2-card-grid">
+                {projects.map((p) => (
+                  <a key={p.id} href={`${BASE}/v2/${encodeURIComponent(p.id)}/`}
+                     className="v2-card v2-project-card">
+                    <div>
+                      <div className="v2-card-title">{p.name || p.id}</div>
+                      {p.location && (
+                        <div className="v2-card-hint" style={{ marginTop: 4 }}>{p.location}</div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#a1a1aa', alignSelf: 'flex-end' }}>
+                      Open →
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Project view (both sidebars) ------------------------------------
+
+function ProjectViewPage({ projectId }) {
   const [open, setOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
-  // Active nav item — purely cosmetic for now.
   const [active, setActive] = useState('overview');
   const [activeToc, setActiveToc] = useState('layers/bike-lanes');
-
+  // Friendly project name for the breadcrumb (lazy fetch).
+  const [projectName, setProjectName] = useState(projectId);
+  useEffect(() => {
+    if (!backendConfigured()) return;
+    listProjects()
+      .then((list) => {
+        const me = (list || []).find((p) => p.id === projectId);
+        if (me?.name) setProjectName(me.name);
+      })
+      .catch(() => {});
+  }, [projectId]);
   return (
     <div className="v2-root">
       <AppSidebar open={open} setOpen={setOpen} active={active} setActive={setActive} />
@@ -31,12 +122,12 @@ export default function AppV2() {
           </button>
           <span className="v2-sep" />
           <Breadcrumb crumbs={[
-            { label: 'studio+', href: '#' },
-            { label: 'projects',  href: '#' },
-            { label: 'Al Zeina',  current: true },
+            { label: 'studio+',  href: `${BASE}/v2/` },
+            { label: 'projects', href: `${BASE}/v2/` },
+            { label: projectName || projectId, current: true },
           ]} />
           <div style={{ flex: 1 }} />
-          <a href="../" className="v2-link" title="Back to the canvas app">
+          <a href="../../" className="v2-link" title="Back to the canvas app">
             ← classic view
           </a>
           <button className="v2-icon-btn"
@@ -53,7 +144,7 @@ export default function AppV2() {
                 This page is a fresh layout following the shadcn sidebar-12
                 / sidebar-03 patterns. The 3D canvas, layer controls and
                 camera-tour controls will be wired in here as panels next.
-                For now go back to the <a href="../" className="v2-link">classic view</a>
+                For now go back to the <a href="../../" className="v2-link">classic view</a>
                 {' '}to interact with the project.
               </p>
             </div>

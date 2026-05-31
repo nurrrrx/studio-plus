@@ -192,6 +192,16 @@ body {
 .v2-card-title { font-size: 13px; font-weight: 600; color: var(--v2-fg); }
 .v2-card-hint  { font-size: 12px; color: var(--v2-muted-fg); line-height: 1.4; }
 
+.v2-project-card {
+  text-decoration: none; color: inherit;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
+}
+.v2-project-card:hover {
+  background: var(--v2-accent);
+  border-color: #d4d4d8;
+}
+.v2-project-card:active { transform: scale(0.997); }
+
 .v2-big-pane {
   flex: 1; min-height: 320px;
   border-radius: 12px;

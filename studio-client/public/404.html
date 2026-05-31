@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>studio+</title>
+    <script>
+      // SPA fallback for GitHub Pages — see https://github.com/rafgraph/spa-github-pages
+      //
+      // GH Pages doesn't know about client-side routes like /v2/al-zeina,
+      // so it returns this 404.html. We bounce to the base URL with the
+      // original path stashed in a ?p=… query, and the bootloader in
+      // index.html / v2/index.html restores it via the History API.
+      (function () {
+        var BASE = '/studio-plus/';
+        var l = window.location;
+        var p = l.pathname.indexOf(BASE) === 0 ? l.pathname.substring(BASE.length - 1) : '/';
+        l.replace(BASE + '?p=' + encodeURIComponent(p) + (l.search ? '&q=' + encodeURIComponent(l.search.slice(1)) : '') + l.hash);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

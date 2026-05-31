@@ -8,6 +8,23 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // SPA fallback unpacker — see public/404.html. If we arrived here
+      // via the 404 bounce we'll have ?p=<encoded-path>; rewrite the URL
+      // back to that path BEFORE the bundle loads so main.jsx sees the
+      // real pathname (e.g. /studio-plus/v2/al-zeina/).
+      (function () {
+        var BASE = '/studio-plus';
+        var s = window.location.search;
+        var m = s.match(/[?&]p=([^&]+)/);
+        if (m) {
+          var p = decodeURIComponent(m[1]);
+          var qm = s.match(/[?&]q=([^&]+)/);
+          var q = qm ? '?' + decodeURIComponent(qm[1]) : '';
+          window.history.replaceState(null, '', BASE + p + q + window.location.hash);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
