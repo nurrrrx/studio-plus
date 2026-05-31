@@ -49,7 +49,10 @@ export default function App() {
   const [page, setPage] = useState('projects'); // 'projects' | 'project' — start on home
   const [tab, setTab] = useState(initialTab);
   const [geo, setGeo] = useState(null);
-  const [chrome, setChrome] = useState({});
+  // Height legend is opt-in: starts hidden so the canvas isn't cluttered;
+  // user can show it via the gear menu when needed. Every other chrome
+  // key defaults to true (absence means "on").
+  const [chrome, setChrome] = useState({ legend: false });
   const [gearOpen, setGearOpen] = useState(false);
   const [freeOrbit3D, setFreeOrbit3D] = useState(true);
 

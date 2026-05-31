@@ -3392,7 +3392,41 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         </LayersPanel>
       )}
       {show('legend') && <Legend geo={geo} />}
-      <ControlStack>
+      {/* Full-height right-hand control stack. Top → bottom:
+            (1) Compass   (2) Rotation + Zoom tall sliders
+            (3) Gizmo3D   (4) Target X + Y tall sliders   (5) Target Z tall slider
+            (6) Hand / Reset / Photo   (7) Save settings */}
+      <div style={{ position: 'absolute', right: 16,
+                    top: 'calc(var(--header-inset, 0px) + 14px)',
+                    bottom: 'calc(var(--footer-inset, 0px) + 12px)',
+                    zIndex: 6,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', gap: 8,
+                    transition: 'top 0.22s ease, bottom 0.22s ease' }}
+           onMouseDown={(e) => e.stopPropagation()}>
+
+        {/* Row 1 — Compass */}
+        {show('compass') && <Compass bearing={finite(viewState.rotationOrbit, 0)} onBearing={setBearing} />}
+
+        {/* Row 2 — Rotation + Zoom tall sliders */}
+        {(show('compass') || show('zoom')) && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'stretch',
+                        flex: 1, minHeight: 0, width: 122 }}>
+            {show('compass') && (
+              <TallSlider label="Rot°" value={finite(viewState.rotationOrbit, 0)}
+                          min={0} max={360} step={1} wrap color="#dc8a3a"
+                          valueFmt={(v) => Math.round(((v % 360) + 360) % 360)}
+                          onChange={(v) => setBearing(((v % 360) + 360) % 360)} />
+            )}
+            {show('zoom') && (
+              <TallSlider label="Zoom" value={finite(viewState.zoom, 0)}
+                          min={-3} max={6} step={0.1} color="#3a8fdc"
+                          onChange={(z) => setViewState((vs) => ({ ...vs, zoom: Math.max(-3, Math.min(6, z)) }))} />
+            )}
+          </div>
+        )}
+
+        {/* Row 3 — Gizmo3D (visual XYZ orientation indicator) */}
         {show('gizmo') && (
           <Gizmo3D bearing={finite(viewState.rotationOrbit, 0)} pitch={finite(viewState.rotationX, 55)}
                    onSet={({ bearing, pitch }) => setViewState((v) => ({
@@ -3401,18 +3435,44 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                      rotationX: pitch != null ? clampX(pitch) : v.rotationX,
                    }))} />
         )}
+
+        {/* Row 4 — Target X + Y tall sliders */}
         {show('gizmo') && (
-          <TargetNudge
-            target={viewState.target}
-            onNudge={(axis, sign) => setViewState((v) => {
-              const step = axis === 2 ? 5 : 20; // metres; Z stepped finer
-              const t = Array.isArray(v.target) ? [v.target[0] || 0, v.target[1] || 0, v.target[2] || 0] : [0, 0, 0];
-              t[axis] = (t[axis] || 0) + sign * step;
-              return { ...v, target: t };
-            })} />
+          <div style={{ display: 'flex', gap: 6, alignItems: 'stretch',
+                        flex: 1, minHeight: 0, width: 122 }}>
+            <TallSlider label="X" value={finite(viewState.target?.[0], 0)}
+                        min={-2000} max={2000} step={5} color="#d04a3a"
+                        valueFmt={(v) => Math.round(v)}
+                        onChange={(x) => setViewState((vs) => {
+                          const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
+                          t[0] = x; return { ...vs, target: t };
+                        })} />
+            <TallSlider label="Y" value={finite(viewState.target?.[1], 0)}
+                        min={-2000} max={2000} step={5} color="#3a8f4a"
+                        valueFmt={(v) => Math.round(v)}
+                        onChange={(y) => setViewState((vs) => {
+                          const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
+                          t[1] = y; return { ...vs, target: t };
+                        })} />
+          </div>
         )}
-        {show('save') && <SaveButton dirty={dirty} save={save} />}
-        <div style={{ display: 'flex', gap: 5 }} onMouseDown={(e) => e.stopPropagation()}>
+
+        {/* Row 5 — Target Z tall slider (vertical movement) */}
+        {show('gizmo') && (
+          <div style={{ display: 'flex', alignItems: 'stretch',
+                        flex: 1, minHeight: 0, width: 60 }}>
+            <TallSlider label="Z" value={finite(viewState.target?.[2], 0)}
+                        min={-100} max={500} step={1} color="#3a6fd0"
+                        valueFmt={(v) => Math.round(v)}
+                        onChange={(z) => setViewState((vs) => {
+                          const t = Array.isArray(vs.target) ? [...vs.target] : [0, 0, 0];
+                          t[2] = z; return { ...vs, target: t };
+                        })} />
+          </div>
+        )}
+
+        {/* Row 6 — Hand, Reset, Save photo */}
+        <div style={{ display: 'flex', gap: 5 }}>
           <button title="hand tool — drag to pan instead of rotate"
                   onClick={() => setPanMode((p) => !p)}
                   style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
@@ -3439,26 +3499,10 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             </svg>
           </button>
         </div>
-        {(show('zoom') || show('tilt')) && (
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}
-               onMouseDown={(e) => e.stopPropagation()}>
-            {show('tilt') && (
-              <div>
-                <CtrlLabel>Tilt {Math.round(finite(viewState.rotationX, 55))}°</CtrlLabel>
-                <TiltBar tilt={finite(viewState.rotationX, 55)} onTilt={setPitch} min={0} max={89} />
-              </div>
-            )}
-            {show('zoom') && (
-              <div>
-                <CtrlLabel>Zoom</CtrlLabel>
-                <ZoomBar onStep={zoom}
-                         onZoom={(dz) => setViewState((v) => ({ ...v, zoom: Math.max(-3, Math.min(6, v.zoom + dz)) }))} />
-              </div>
-            )}
-          </div>
-        )}
-        {show('compass') && <Compass bearing={finite(viewState.rotationOrbit, 0)} onBearing={setBearing} />}
-      </ControlStack>
+
+        {/* Row 7 — Save settings */}
+        {show('save') && <SaveButton dirty={dirty} save={save} />}
+      </div>
     </div>
   );
 }
@@ -3513,42 +3557,110 @@ function Gizmo3D({ bearing, pitch, onSet }) {
   );
 }
 
-// Compact X/Y/Z nudge pad. Three rows of [−] AXIS [+] — clicking shifts the
-// orbit target along that world axis by a small step (Z is finer than XY).
-// Colour-matched to the Gizmo3D arrows so the two read as one unit.
-function TargetNudge({ target, onNudge }) {
-  const AXES = [
-    { i: 0, label: 'X', color: '#d04a3a' },
-    { i: 1, label: 'Y', color: '#3a8f4a' },
-    { i: 2, label: 'Z', color: '#3a6fd0' },
-  ];
-  const btn = (axis, sign) => ({
-    width: 18, height: 18, lineHeight: '16px',
-    padding: 0, fontSize: 12, fontWeight: 700,
-    border: '1px solid var(--line)', borderRadius: 3,
-    background: '#fff', color: axis.color, cursor: 'pointer',
-    userSelect: 'none',
-  });
-  const fmt = (n) => Number.isFinite(n) ? n.toFixed(0) : '—';
-  const t = Array.isArray(target) ? target : [];
+// Click-and-hold button: fires once on press, then repeats with an
+// accelerating cadence until the user lets go. Multi-clicks still work
+// naturally — every onMouseDown fires the step immediately.
+function HoldButton({ onStep, children, title, style, disabled }) {
+  const timer = useRef(null);
+  const stop = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+  useEffect(() => stop, []);
+  const start = (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    onStep();
+    let delay = 320;
+    const tick = () => {
+      onStep();
+      delay = Math.max(35, Math.round(delay * 0.85));
+      timer.current = setTimeout(tick, delay);
+    };
+    timer.current = setTimeout(tick, 320);
+  };
   return (
-    <div title="Pan the orbit target along world axes (Z is vertical)"
-         style={{ background: 'rgba(255,255,255,0.92)', borderRadius: 8,
-                  border: '1px solid var(--line)', boxShadow: '0 1px 5px rgba(0,0,0,0.15)',
-                  padding: '6px 7px', display: 'flex', flexDirection: 'column', gap: 4 }}
-         onMouseDown={(e) => e.stopPropagation()}>
-      {AXES.map((axis) => (
-        <div key={axis.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button style={btn(axis, -1)} title={`${axis.label}−`}
-                  onClick={() => onNudge(axis.i, -1)}>−</button>
-          <div style={{ minWidth: 38, textAlign: 'center', fontSize: 10,
-                        color: axis.color, fontWeight: 700, letterSpacing: 0.3 }}>
-            {axis.label} {fmt(t[axis.i])}
-          </div>
-          <button style={btn(axis, +1)} title={`${axis.label}+`}
-                  onClick={() => onNudge(axis.i, +1)}>+</button>
-        </div>
-      ))}
+    <button type="button" disabled={disabled} title={title}
+            onMouseDown={start} onMouseUp={stop} onMouseLeave={stop}
+            onTouchStart={start} onTouchEnd={stop} onTouchCancel={stop}
+            style={style}>{children}</button>
+  );
+}
+
+// Tall vertical drag-bar: top of the track = max, bottom = min. Click /
+// drag anywhere on the track to set the value absolutely. Above and below
+// the track sit +/− HoldButtons (click, multi-click, OR press-and-hold).
+// Editable numeric input below pins the exact value.
+function TallSlider({ label, value, min, max, step = 1, color = '#7a7468',
+                     wrap = false, onChange, valueFmt }) {
+  const trackRef = useRef(null);
+  const v = Number.isFinite(value) ? value : (min + max) / 2;
+  const clamp = (n) => {
+    if (!Number.isFinite(n)) return v;
+    if (wrap) return ((n % 360) + 360) % 360;
+    return Math.max(min, Math.min(max, n));
+  };
+  const startDrag = (e) => {
+    const track = trackRef.current; if (!track) return;
+    const isTouch = !!e.touches;
+    if (!isTouch) e.preventDefault();
+    const r = track.getBoundingClientRect();
+    const setFromY = (cy) => {
+      const ratio = Math.max(0, Math.min(1, (r.bottom - cy) / r.height));
+      let next = min + ratio * (max - min);
+      if (step) next = Math.round(next / step) * step;
+      onChange(clamp(next));
+    };
+    const onMove = (ev) => {
+      const cy = ev.clientY ?? ev.touches?.[0]?.clientY ?? 0;
+      setFromY(cy);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+    setFromY(e.clientY ?? e.touches?.[0]?.clientY ?? 0);
+  };
+  const ratio = Math.max(0, Math.min(1, (v - min) / (max - min)));
+  const inc = (sign) => onChange(clamp(v + sign * step));
+  const btnStyle = {
+    width: 22, height: 18, lineHeight: '16px',
+    padding: 0, fontSize: 13, fontWeight: 700,
+    border: '1px solid var(--line)', borderRadius: 3,
+    background: '#fff', color: '#3a342c', cursor: 'pointer',
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  flex: 1, height: '100%', minWidth: 0 }}>
+      <div style={{ fontSize: 9, color: '#5e564a', letterSpacing: 1.3,
+                    textTransform: 'uppercase', fontWeight: 600,
+                    textShadow: '0 0 4px rgba(255,255,255,0.9)' }}>{label}</div>
+      <HoldButton onStep={() => inc(+1)} title={`${label} +`} style={btnStyle}>+</HoldButton>
+      <div ref={trackRef} onMouseDown={startDrag} onTouchStart={startDrag}
+           style={{ position: 'relative', width: 18, flex: 1, minHeight: 60,
+                    border: '1px solid #c8c2b3', borderRadius: 6,
+                    background: 'rgba(245,243,237,0.92)', cursor: 'ns-resize',
+                    boxShadow: 'inset 0 0 6px rgba(0,0,0,0.06)' }}>
+        <div style={{ position: 'absolute', bottom: 0, left: 1, right: 1,
+                      height: `${ratio * 100}%`, background: color, opacity: 0.45,
+                      borderRadius: 5, transition: 'height 70ms ease' }} />
+        <div style={{ position: 'absolute', left: -3, right: -3,
+                      top: `${(1 - ratio) * 100}%`, transform: 'translateY(-50%)',
+                      height: 5, background: '#26211a', borderRadius: 3 }} />
+      </div>
+      <HoldButton onStep={() => inc(-1)} title={`${label} −`} style={btnStyle}>−</HoldButton>
+      <input type="number" step={step}
+             value={valueFmt ? valueFmt(v) : (Math.round(v * 100) / 100)}
+             onChange={(e) => {
+               const n = Number(e.target.value);
+               if (Number.isFinite(n)) onChange(clamp(n));
+             }}
+             onWheel={(e) => e.currentTarget.blur()}
+             style={{ width: 50, fontSize: 10, padding: '1px 2px', textAlign: 'center',
+                      border: '1px solid #c8c2b3', borderRadius: 3 }} />
     </div>
   );
 }
