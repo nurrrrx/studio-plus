@@ -900,6 +900,21 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   const runPolygonFill = (type, count) => {
     if (fillPolygon.length < 3) return;
     const m = PROP_META[type]; if (!m) return;
+    // Polygon-type props (beach / sea) ARE the polygon — there's no scatter
+    // to run. Promote the drawn shape into a single prop and return.
+    if (m.polygon) {
+      const poly = fillPolygon.map(([x, y]) => [x, y]);
+      setPropsItems((p) => [...p, {
+        id: Math.random().toString(36).slice(2, 10),
+        type, polygon: poly,
+        layerId: activeLayerId || null,
+      }]);
+      if (activeLayerId) {
+        setPropLayers((layers) => layers.map((l) => l.id === activeLayerId ? { ...l, polygon: poly } : l));
+      }
+      setFillMode('idle'); setFillPolygon([]);
+      return;
+    }
     const o = propSizes[type] || {};
     const heightM = o.h ?? m.size;
     const widthM  = o.w ?? heightM * (m.w / m.h);
