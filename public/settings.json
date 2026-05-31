@@ -1,0 +1,74 @@
+{
+  "massing": {
+    "zoom": 16.976831504605187,
+    "bearing": 0,
+    "pitch": 54.999999999999986,
+    "longitude": 54.61182109340285,
+    "latitude": 24.454536934693976
+  },
+  "orbit": {
+    "rotationOrbit": -161.12035044531035,
+    "rotationX": 77.32967032967034,
+    "zoom": 0.5246836104542302,
+    "target": [
+      52.89184118528208,
+      -104.09617420055305,
+      21.700000000000003
+    ],
+    "showBuildings": true,
+    "showRoads": true,
+    "showBorders": true,
+    "heightColors": false,
+    "showIds": false,
+    "showBasemap": false,
+    "showPodium": true,
+    "hidePodium1Floor": false,
+    "showFloors": true,
+    "showAoiPlatform": false,
+    "platformHeight": 7.5,
+    "showGrid": true,
+    "gridExtent": "shape",
+    "gridColor": "#3c4655",
+    "gridWidth": 0.1,
+    "bgColor": "#ebebeb",
+    "showGroundPlane": true,
+    "numbersThrough": false,
+    "bldgFill": "#f8f6ef",
+    "bldgLine": "#000000",
+    "podiumFill": "#ffffff",
+    "roadFill": "#c0c0c0",
+    "roofWidth": 0.6,
+    "edgeWidth": 2.2,
+    "explodeGap": 20,
+    "showTrees": false,
+    "fillCutouts": true,
+    "propsItems": [],
+    "propSizes": {},
+    "propColors": {
+      "tree": "#38571a"
+    },
+    "propAvoidIntersect": true,
+    "smartPlace": {},
+    "propLayers": [],
+    "activeLayerId": null,
+    "layersExploded": false,
+    "layerExplodeGap": 8,
+    "showLayerPolygons": false,
+    "shape": "circle",
+    "size": {
+      "radius": 750,
+      "half": 450,
+      "halfX": 600,
+      "halfY": 450
+    },
+    "basemapStyle": "streets-v12",
+    "archBuildings": false,
+    "archRoads": false,
+    "archBasemap": false
+  },
+  "app": {
+    "title": "Al Zeina, Abu Dhabi",
+    "headerPinned": true,
+    "footerPinned": false
+  }
+}
