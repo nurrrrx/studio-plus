@@ -1404,6 +1404,14 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 
   // layer order: basemap -> mask -> roads -> buildings -> aoi -> labels
   const layers = [];
+  // Layer-name label data is computed below alongside the slabs, but the
+  // TextLayer that draws the labels is appended at the very END of the
+  // layers array (see the push right before the layer-building closes).
+  // depthTest:false alone isn't enough to keep labels on top of everything
+  // — any deck.gl layer drawn LATER in the array can still rasterise over
+  // them. Drawing last (with depthTest off too) guarantees the label sits
+  // in front of buildings, props, and overlays from the camera.
+  let layerLabelData = null;
   const bmVisible = bm && !interacting; // hide basemap while rotating
   if (bmVisible) {
     layers.push(new BitmapLayer({
@@ -1587,19 +1595,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       parameters: { depthTest: false },
       updateTriggers: { getPolygon: [surfaceZ, layerExplodeGap, layersExploded] },
     }));
-    if (showLayerNames) layers.push(new TextLayer({
-      id: 'layer-labels', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-      data: slabs,
-      // Lift the label well above the slab so it clearly floats over the
-      // layer instead of sitting on it.
-      getPosition: (d) => [d.centroid[0], d.centroid[1], d.z + Math.max(3, layerExplodeGap * 0.4)],
-      getText: (d) => d.name,
-      getSize: 14, getColor: (d) => [...d.color, 255],
-      billboard: true,
-      fontSettings: { sdf: true },
-      outlineColor: [255, 255, 255, 240], outlineWidth: 4,
-      parameters: { depthTest: false },
-    }));
+    if (showLayerNames) layerLabelData = slabs;
   }
 
   // Polygon-type props (beach / sea). Rendered as PolygonLayer with
@@ -2152,6 +2148,24 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         updateTriggers: { getPosition: [surfaceZ, propsItems] },
       }));
     }
+  }
+
+  // Layer-name labels — pushed LAST so they paint over buildings, props,
+  // and every earlier layer regardless of camera angle. depthTest:false
+  // makes them ignore the z-buffer so even when the centroid is below a
+  // tall building the text still reads.
+  if (layerLabelData && layerLabelData.length) {
+    layers.push(new TextLayer({
+      id: 'layer-labels', coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      data: layerLabelData,
+      getPosition: (d) => [d.centroid[0], d.centroid[1], d.z + Math.max(3, layerExplodeGap * 0.4)],
+      getText: (d) => d.name,
+      getSize: 14, getColor: (d) => [...d.color, 255],
+      billboard: true,
+      fontSettings: { sdf: true },
+      outlineColor: [255, 255, 255, 240], outlineWidth: 4,
+      parameters: { depthTest: false, depthMask: false },
+    }));
   }
 
   const clampX = (x) => Math.max(0, Math.min(89, x));        // never go underground
