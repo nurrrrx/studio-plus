@@ -231,9 +231,9 @@ function ProjectViewPage({ projectId, onSignOut }) {
               <DeckOrbit3D geo={geo} chrome={chrome}
                            freeOrbit={freeOrbit}
                            onFreeOrbitChange={setFreeOrbit}
-                           customizationTarget={open ? customizationTarget : null}
-                           tourTarget={open ? tourTarget : null}
-                           controlsTarget={rightOpen ? controlsTarget : null}
+                           customizationTarget={customizationTarget}
+                           tourTarget={tourTarget}
+                           controlsTarget={controlsTarget}
                            headerActionsTarget={headerActionsTarget} />
             </div>
           )}
@@ -281,22 +281,22 @@ function AppSidebar({ open, setOpen, active, setActive, customizationRef, tourRe
           <SidebarGroup key={g.label} group={g} open={open}
                         active={active} setActive={setActive} />
         ))}
-        {open && (
-          <div className="v2-sb-group">
-            <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
-              <span>Customization</span>
-            </div>
-            <div className="v2-sb-portal" ref={customizationRef} />
+        {/* Keep the portal hosts mounted even when the sidebar is
+            collapsed — otherwise the portals lose their target nodes
+            and DeckOrbit3D falls back to inline canvas overlays. The
+            groups are hidden visually when !open. */}
+        <div className="v2-sb-group" style={{ display: open ? undefined : 'none' }}>
+          <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
+            <span>Customization</span>
           </div>
-        )}
-        {open && (
-          <div className="v2-sb-group">
-            <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
-              <span>Camera tour</span>
-            </div>
-            <div className="v2-sb-portal" ref={tourRef} />
+          <div className="v2-sb-portal" ref={customizationRef} />
+        </div>
+        <div className="v2-sb-group" style={{ display: open ? undefined : 'none' }}>
+          <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
+            <span>Camera tour</span>
           </div>
-        )}
+          <div className="v2-sb-portal" ref={tourRef} />
+        </div>
       </div>
       <div className="v2-sidebar-footer">
         {open ? (
@@ -358,10 +358,14 @@ function SidebarGroup({ group, open, active, setActive }) {
 // floating on the canvas.
 
 function RightSidebar({ open, controlsRef }) {
-  if (!open) return null;
+  // Always render the aside (and its portal host) so DeckOrbit3D's
+  // controls-portal target stays in the DOM. When closed, collapse the
+  // width to 0 and hide the contents — the portal contents stay mounted
+  // but are no longer visible on the canvas.
   return (
     <aside className="v2-right-sidebar"
-           style={{ width: RIGHT_W_OPEN }}>
+           style={{ width: open ? RIGHT_W_OPEN : 0,
+                    visibility: open ? 'visible' : 'hidden' }}>
       <div className="v2-sidebar-content">
         <div className="v2-sb-group">
           <div className="v2-sb-group-label" style={{ cursor: 'default' }}>
