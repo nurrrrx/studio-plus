@@ -103,17 +103,22 @@ const svgToUrl = (svg) => `data:image/svg+xml;base64,${typeof btoa === 'function
 // fields are user-editable from the Camera tour sidebar. customDurationS
 // = null means "derive from flyConfig" (e.g. waitSec, tiltSpeed).
 const DEFAULT_TOUR_STAGES = [
-  { id: 'init',        label: 'Setup',           description: 'Collapse layers, hide overlays, set optimal tilt + collapsed zoom', enabled: true, customDurationS: null },
-  { id: 'wait1',       label: 'Hold opening',    description: 'Pause on the starting pose', enabled: true, customDurationS: null },
-  { id: 'expand',      label: 'Expand layers',   description: 'Show layer slabs, ease to min tilt + expanded zoom', enabled: true, customDurationS: 1.8 },
-  { id: 'min_to_opt',  label: 'Tilt → optimal',  description: 'Lean from min to optimal tilt', enabled: true, customDurationS: null },
-  { id: 'hold_opt',    label: 'Hold optimal',    description: 'Pause at the optimal pose', enabled: true, customDurationS: null },
-  { id: 'opt_to_max',  label: 'Tilt → max',      description: 'Lean further to the maximum tilt', enabled: true, customDurationS: null },
-  { id: 'hold_max',    label: 'Hold max',        description: 'Pause at the max-tilt pose', enabled: true, customDurationS: null },
-  { id: 'hide_colors', label: 'Collapse colors', description: 'Hide layer polygons (and stack, if enabled)', enabled: true, customDurationS: null },
-  { id: 'max_to_opt',  label: 'Tilt back',       description: 'Restore the optimal pose, re-show layer colours', enabled: true, customDurationS: null },
-  { id: 'rotate_360',  label: 'Spin 360°',       description: 'Orbit a full revolution around the target', enabled: true, customDurationS: null },
+  { id: 'view_2d_plain',     label: '2D · no layers',           description: 'Top-down plan with the customization layers hidden',                              enabled: true, customDurationS: null },
+  { id: 'view_2d_reveal',    label: '2D · reveal layers',       description: 'Top-down; reveal layers one by one (High albedo pavement → Green corridors → Dense large park → Bike lanes → Burjeel wind tower), collapsed', enabled: true, customDurationS: 4 },
+  { id: 'to_3d_collapsed',   label: '3D · collapsed',           description: 'Tilt down into a collapsed 3D massing at the optimal angle',                       enabled: true, customDurationS: null },
+  { id: 'to_min_tilt',       label: '3D · min tilt',            description: 'Lean to the lowest, most oblique angle (layers still collapsed)',                 enabled: true, customDurationS: null },
+  { id: 'min_tilt_explode',  label: '3D · min tilt · exploded', description: 'Explode the layer slabs apart at the min angle',                                   enabled: true, customDurationS: null },
+  { id: 'opt_tilt_spin',     label: '3D · opt tilt · spin 360', description: 'Rise to the optimal tilt (exploded), hold, then orbit a full 360°',               enabled: true, customDurationS: null },
+  { id: 'max_tilt_explode',  label: '3D · max tilt · exploded', description: 'Lean up to the steep angle, layers still exploded',                                enabled: true, customDurationS: null },
+  { id: 'max_tilt_collapse', label: '3D · max tilt · collapsed',description: 'Bring the layer slabs back together at the steep angle',                           enabled: true, customDurationS: null },
+  { id: 'opt_tilt_collapse', label: '3D · opt tilt · collapsed',description: 'Return to the optimal tilt with the layers collapsed',                             enabled: true, customDurationS: null },
+  { id: 'opt_tilt_explode',  label: '3D · opt tilt · exploded', description: 'Explode the layers one last time at the optimal tilt',                             enabled: true, customDurationS: null },
 ];
+// Reveal order for the "2D · reveal layers" stage. Matched against the
+// project's prop-layer names (case / spacing-insensitive, lenient
+// substring fallback); any layers not matched here are revealed after,
+// in their existing customization-list order.
+const TOUR_REVEAL_ORDER = ['high albedo pavement', 'green corridors', 'dense large park', 'bike lanes', 'burjeel wind tower'];
 
 const PROP_META = {
   tree:   { label: 'Tree',         icon: PROP_URLS.tree,   w: 64, h: 96, anchorY: 96, size: 8, defaultColor: '#38571a' },
@@ -326,7 +331,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     rotSpeed: 36,       // deg / sec (one full 360 in 10s by default)
     expandedZoom: 0.4,
     collapsedZoom: 1.6,
-    collapseAtMaxTilt: false,
+    loop: true,         // restart the sequence from the top when it finishes
     waitSec: 2,
   });
   const flyAbortRef = useRef(null);   // call to cancel an active tour
@@ -2562,57 +2567,114 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   // independently of React's commit cycle. Returns a cancel function.
   const runFlyThrough = (cfg) => {
     let cancelled = false;
-    const wait = cfg.waitSec * 1000;
     const easeIn  = (t) => t * t;
     const easeOut = (t) => 1 - (1 - t) * (1 - t);
     const easeInOut = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
     const tiltDuration = (a, b) => Math.max(200, Math.abs(b - a) / Math.max(1, cfg.tiltSpeed) * 1000);
+    const spinDuration = Math.max(300, 360 / Math.max(1, cfg.rotSpeed) * 1000);
+    const dwellMs = Math.max(0, (cfg.waitSec || 0) * 1000); // beat held at the end of each stage
+    const TWO_D_TILT = 89;   // top-down plan (the codebase treats rotationX > 80 as 2D)
+    // Explode / collapse the layer stack (slabs + floating names).
+    const explodeLayers  = () => { setLayersExploded(true);  setShowLayerPolygons(true);  setShowLayerNames(true); };
+    const collapseLayers = () => { setLayersExploded(false); setShowLayerPolygons(false); setShowLayerNames(false); };
+
+    // Order the project's prop layers for the staggered 2D reveal. Match
+    // each TOUR_REVEAL_ORDER entry to a layer by name (normalised, with a
+    // lenient substring fallback); append any unmatched layers after, in
+    // their existing customization-list order, so every layer reveals.
+    const orderedRevealLayers = () => {
+      const norm = (n) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const used = new Set();
+      const out = [];
+      for (const want of TOUR_REVEAL_ORDER) {
+        let l = propLayers.find((x) => !used.has(x.id) && norm(x.name) === want);
+        if (!l) l = propLayers.find((x) => !used.has(x.id) && (norm(x.name).includes(want) || want.includes(norm(x.name))));
+        if (l) { used.add(l.id); out.push(l); }
+      }
+      for (const x of propLayers) if (!used.has(x.id)) out.push(x);
+      return out;
+    };
+    // Reveal exactly the first `count` ordered layers (the rest hidden).
+    // Skipped when unchanged so we only touch propLayers when a new layer
+    // crosses the threshold during the reveal.
+    let revealedCount = -1;
+    const setRevealCount = (count) => {
+      const clamped = Math.max(0, Math.min(propLayers.length, count));
+      if (clamped === revealedCount) return;
+      revealedCount = clamped;
+      const visibleIds = new Set(orderedRevealLayers().slice(0, clamped).map((l) => l.id));
+      setPropLayers((prev) => prev.map((l) => ({ ...l, visible: visibleIds.has(l.id) })));
+    };
+
     // Build the run-time phase list from the user-editable tourStages.
-    // Each enabled stage maps to one phase via PHASE_LOGIC; customDurationS
-    // wins over the default duration if provided.
+    // Each enabled stage maps to one (or, via `segments`, several) phases;
+    // customDurationS wins over the default move duration when provided.
+    // Every phase may hold for `holdMs` after its camera move completes so
+    // there are "some seconds at each stage". The sequence reads:
+    //   2D no layers → 2D reveal layers → 3D collapsed → min tilt →
+    //   min tilt exploded → opt tilt (wait, spin 360) → max tilt exploded →
+    //   max tilt collapsed → opt tilt collapsed → opt tilt exploded
+    //   (then loops, if cfg.loop).
     const PHASE_LOGIC = {
-      init: { instant: true, onEnter: () => {
-        setLayersExploded(false);
-        setShowLayerPolygons(false);
-        setShowLayerNames(false);
-        setViewState((v) => ({ ...v, rotationX: clampX(cfg.optTilt), zoom: cfg.collapsedZoom }));
-      } },
-      wait1:      { defaultDurationMs: wait },
-      expand:     { defaultDurationMs: 1800,
-                    onEnter: () => { setLayersExploded(true); setShowLayerPolygons(true); setShowLayerNames(true); },
-                    target: () => ({ rotationX: clampX(cfg.minTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
-      min_to_opt: { defaultDurationMs: tiltDuration(cfg.minTilt, cfg.optTilt),
-                    target: () => ({ rotationX: clampX(cfg.optTilt) }), ease: easeInOut },
-      hold_opt:   { defaultDurationMs: wait },
-      opt_to_max: { defaultDurationMs: tiltDuration(cfg.optTilt, cfg.maxTilt),
-                    target: () => ({ rotationX: clampX(cfg.maxTilt) }), ease: easeInOut },
-      hold_max:   { defaultDurationMs: wait },
-      hide_colors:{ defaultDurationMs: wait,
-                    onEnter: () => { setShowLayerPolygons(false); setShowLayerNames(false);
-                                     if (cfg.collapseAtMaxTilt) setLayersExploded(false); } },
-      max_to_opt: { defaultDurationMs: tiltDuration(cfg.maxTilt, cfg.optTilt),
-                    onEnter: () => { setShowLayerPolygons(true); setShowLayerNames(true);
-                                     if (cfg.collapseAtMaxTilt) setLayersExploded(true); },
-                    target: () => ({ rotationX: clampX(cfg.optTilt) }), ease: easeInOut },
-      rotate_360: { defaultDurationMs: Math.max(300, 360 / Math.max(1, cfg.rotSpeed) * 1000),
-                    relTarget: (s) => ({ rotationOrbit: (Number.isFinite(s.rotationOrbit) ? s.rotationOrbit : 0) + 360 }),
-                    ease: easeOut },
+      view_2d_plain:  { defaultDurationMs: 1200, holdMs: dwellMs,
+                        onEnter: () => { collapseLayers(); setRevealCount(0); },
+                        target: () => ({ rotationX: clampX(TWO_D_TILT), zoom: cfg.collapsedZoom }), ease: easeInOut },
+      view_2d_reveal: { defaultDurationMs: 4000, holdMs: dwellMs, onEnter: collapseLayers,
+                        target: () => ({ rotationX: clampX(TWO_D_TILT), zoom: cfg.collapsedZoom }),
+                        onProgress: (e, t) => setRevealCount(Math.ceil(t * propLayers.length)), ease: easeInOut },
+      to_3d_collapsed:{ defaultDurationMs: tiltDuration(TWO_D_TILT, cfg.optTilt), holdMs: dwellMs, onEnter: collapseLayers,
+                        target: () => ({ rotationX: clampX(cfg.optTilt), zoom: cfg.collapsedZoom }), ease: easeInOut },
+      to_min_tilt:    { defaultDurationMs: tiltDuration(cfg.optTilt, cfg.minTilt), holdMs: dwellMs,
+                        target: () => ({ rotationX: clampX(cfg.minTilt), zoom: cfg.collapsedZoom }), ease: easeInOut },
+      min_tilt_explode:{ defaultDurationMs: 1800, holdMs: dwellMs, onEnter: explodeLayers,
+                        target: () => ({ rotationX: clampX(cfg.minTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
+      // Compound: rise from min → optimal tilt, hold (the "wait"), then orbit 360°.
+      opt_tilt_spin:  { segments: () => [
+                          { durationMs: tiltDuration(cfg.minTilt, cfg.optTilt), holdMs: dwellMs, onEnter: explodeLayers,
+                            target: () => ({ rotationX: clampX(cfg.optTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
+                          { durationMs: spinDuration, holdMs: 0,
+                            relTarget: (s) => ({ rotationOrbit: (Number.isFinite(s.rotationOrbit) ? s.rotationOrbit : 0) + 360 }), ease: easeInOut },
+                        ] },
+      max_tilt_explode:{ defaultDurationMs: tiltDuration(cfg.optTilt, cfg.maxTilt), holdMs: dwellMs, onEnter: explodeLayers,
+                        target: () => ({ rotationX: clampX(cfg.maxTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
+      max_tilt_collapse:{ defaultDurationMs: 1800, holdMs: dwellMs, onEnter: collapseLayers,
+                        target: () => ({ rotationX: clampX(cfg.maxTilt), zoom: cfg.collapsedZoom }), ease: easeInOut },
+      opt_tilt_collapse:{ defaultDurationMs: tiltDuration(cfg.maxTilt, cfg.optTilt), holdMs: dwellMs, onEnter: collapseLayers,
+                        target: () => ({ rotationX: clampX(cfg.optTilt), zoom: cfg.collapsedZoom }), ease: easeInOut },
+      opt_tilt_explode:{ defaultDurationMs: 1800, holdMs: dwellMs, onEnter: explodeLayers,
+                        target: () => ({ rotationX: clampX(cfg.optTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
     };
     const phases = tourStages
       .filter((s) => s.enabled !== false && PHASE_LOGIC[s.id])
-      .map((s) => {
+      .flatMap((s) => {
         const base = PHASE_LOGIC[s.id];
+        if (typeof base.segments === 'function') {
+          // Compound stage — expand into its ordered sub-phases. The
+          // per-stage customDurationS override doesn't apply here; each
+          // segment carries its own duration derived from flyConfig.
+          return base.segments().map((seg, k) => ({
+            name: `${s.id}:${k}`, instant: !!seg.instant,
+            durationMs: seg.durationMs ?? 0, holdMs: seg.holdMs ?? 0,
+            onEnter: seg.onEnter, target: seg.target, relTarget: seg.relTarget,
+            onProgress: seg.onProgress, ease: seg.ease,
+          }));
+        }
         const durMs = (s.customDurationS != null && Number.isFinite(s.customDurationS))
           ? Math.max(0, s.customDurationS * 1000)
           : (base.defaultDurationMs ?? 0);
-        return { name: s.id, instant: !!base.instant, durationMs: durMs,
-                 onEnter: base.onEnter, target: base.target, relTarget: base.relTarget, ease: base.ease };
-      })
-      .concat([{ name: 'done', instant: true, onEnter: () => { setFlyPlaying(false); } }]);
+        return [{ name: s.id, instant: !!base.instant, durationMs: durMs, holdMs: base.holdMs ?? 0,
+                  onEnter: base.onEnter, target: base.target, relTarget: base.relTarget,
+                  onProgress: base.onProgress, ease: base.ease }];
+      });
     let i = 0, startMs = 0, fromVS = null, targetVS = null;
     const step = (now) => {
       if (cancelled) return;
-      if (i >= phases.length) { setFlyPlaying(false); return; }
+      if (phases.length === 0) { setFlyPlaying(false); return; }
+      if (i >= phases.length) {
+        // End of the sequence — loop back to the top, or stop.
+        if (cfg.loop === false) { setFlyPlaying(false); return; }
+        i = 0; startMs = 0;
+      }
       const p = phases[i];
       if (startMs === 0) {
         startMs = now;
@@ -2624,9 +2686,12 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         const t = p.target ? p.target() : (p.relTarget ? p.relTarget(fromVS) : null);
         targetVS = t;
       }
-      const dur = p.durationMs || 0;
-      const tNorm = dur > 0 ? Math.min(1, (now - startMs) / dur) : 1;
+      const moveMs = p.durationMs || 0;
+      const holdMs = p.holdMs || 0;
+      const elapsed = now - startMs;
+      const tNorm = moveMs > 0 ? Math.min(1, elapsed / moveMs) : 1;
       const e = p.ease ? p.ease(tNorm) : tNorm;
+      if (p.onProgress) p.onProgress(e, tNorm);
       if (targetVS) {
         const next = { ...fromVS };
         for (const k of Object.keys(targetVS)) {
@@ -2637,7 +2702,8 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
         if ('rotationX' in next) next.rotationX = clampX(next.rotationX);
         setViewState((v) => ({ ...v, ...next }));
       }
-      if (tNorm >= 1) { i++; startMs = 0; }
+      // Advance only once the camera move AND the post-move hold elapse.
+      if (elapsed >= moveMs + holdMs) { i++; startMs = 0; }
       requestAnimationFrame(step);
     };
     setFlyPlaying(true);
@@ -4589,9 +4655,9 @@ function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runF
       <label style={{ display: 'flex', alignItems: 'center', gap: 7,
                       padding: '6px 0', cursor: 'pointer', fontSize: 12,
                       color: '#3a342c' }}>
-        <input type="checkbox" checked={!!flyConfig.collapseAtMaxTilt}
-               onChange={(e) => setFlyConfig((c) => ({ ...c, collapseAtMaxTilt: e.target.checked }))} />
-        <span>Collapse layers at max tilt</span>
+        <input type="checkbox" checked={flyConfig.loop !== false}
+               onChange={(e) => setFlyConfig((c) => ({ ...c, loop: e.target.checked }))} />
+        <span>Loop tour (restart at the end)</span>
       </label>
       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
         {flyPlaying ? (
@@ -4883,9 +4949,9 @@ function FlyThroughPanel({ open, setOpen, config, setConfig, playing, onPlay, on
       <label style={{ display: 'flex', alignItems: 'center', gap: 7,
                       padding: '6px 0', cursor: 'pointer', fontSize: 12,
                       color: '#fafafa' }}>
-        <input type="checkbox" checked={!!config.collapseAtMaxTilt}
-               onChange={(e) => upd({ collapseAtMaxTilt: e.target.checked })} />
-        <span>Collapse layers at max tilt</span>
+        <input type="checkbox" checked={config.loop !== false}
+               onChange={(e) => upd({ loop: e.target.checked })} />
+        <span>Loop tour (restart at the end)</span>
       </label>
       <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
         {playing ? (
