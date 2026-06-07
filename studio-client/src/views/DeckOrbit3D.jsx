@@ -98,27 +98,28 @@ const tintSvg = (svg, color) =>
     .replace(/fill="#fff"/gi, `fill="${color}"`);
 const svgToUrl = (svg) => `data:image/svg+xml;base64,${typeof btoa === 'function' ? btoa(withNaturalDims(svg)) : ''}`;
 
-// Camera-tour stages. Each id maps to phase logic baked into
-// runFlyThrough; the label / description / enabled / customDurationS
-// fields are user-editable from the Camera tour sidebar. customDurationS
-// = null means "derive from flyConfig" (e.g. waitSec, tiltSpeed).
-const DEFAULT_TOUR_STAGES = [
-  { id: 'view_2d_plain',     label: '2D · no layers',           description: 'Top-down plan with the customization layers hidden',                              enabled: true, customDurationS: null },
-  { id: 'view_2d_reveal',    label: '2D · reveal layers',       description: 'Top-down; reveal layers one by one (High albedo pavement → Green corridors → Dense large park → Bike lanes → Burjeel wind tower), collapsed', enabled: true, customDurationS: 4 },
-  { id: 'to_3d_collapsed',   label: '3D · collapsed',           description: 'Tilt down into a collapsed 3D massing at the optimal angle',                       enabled: true, customDurationS: null },
-  { id: 'to_min_tilt',       label: '3D · min tilt',            description: 'Lean to the lowest, most oblique angle (layers still collapsed)',                 enabled: true, customDurationS: null },
-  { id: 'min_tilt_explode',  label: '3D · min tilt · exploded', description: 'Explode the layer slabs apart at the min angle',                                   enabled: true, customDurationS: null },
-  { id: 'opt_tilt_spin',     label: '3D · opt tilt · spin 360', description: 'Rise to the optimal tilt (exploded), hold, then orbit a full 360°',               enabled: true, customDurationS: null },
-  { id: 'max_tilt_explode',  label: '3D · max tilt · exploded', description: 'Lean up to the steep angle, layers still exploded',                                enabled: true, customDurationS: null },
-  { id: 'max_tilt_collapse', label: '3D · max tilt · collapsed',description: 'Bring the layer slabs back together at the steep angle',                           enabled: true, customDurationS: null },
-  { id: 'opt_tilt_collapse', label: '3D · opt tilt · collapsed',description: 'Return to the optimal tilt with the layers collapsed',                             enabled: true, customDurationS: null },
-  { id: 'opt_tilt_explode',  label: '3D · opt tilt · exploded', description: 'Explode the layers one last time at the optimal tilt',                             enabled: true, customDurationS: null },
-];
-// Reveal order for the "2D · reveal layers" stage. Matched against the
+// Reveal order for any frame with `reveal: true`. Matched against the
 // project's prop-layer names (case / spacing-insensitive, lenient
 // substring fallback); any layers not matched here are revealed after,
 // in their existing customization-list order.
 const TOUR_REVEAL_ORDER = ['high albedo pavement', 'green corridors', 'dense large park', 'bike lanes', 'burjeel wind tower'];
+
+// Keyframe camera tour. Each frame is a self-contained pose the runner
+// tweens TO from the previous frame: absolute camera (rotationOrbit =
+// "rot", zoom, rotationX = "tilt", target = [x, y, z]) plus a layer mode
+// (hidden / collapsed / exploded), an optional one-by-one layer reveal,
+// timing (durationS = move-in time, holdS = dwell after arriving) and an
+// optional animated rotation (spinDeg, e.g. 360) performed once the pose
+// is reached. enabled:false skips the frame. The list is fully editable
+// from the Camera-tour panel and persists in the project (settings JSONB).
+const DEFAULT_TOUR_FRAMES = [
+  { id: 'frm-1', name: '3D without layers',                       enabled: true, rotationOrbit: 215, zoom: 0.01,  rotationX: 89, target: [58, -150, 22],  layersMode: 'hidden',    reveal: false, durationS: 1.6, holdS: 1.5, spinDeg: 0 },
+  { id: 'frm-2', name: '3D with layers (collapsed · reveal)',     enabled: true, rotationOrbit: 215, zoom: 0.01,  rotationX: 89, target: [58, -150, 22],  layersMode: 'collapsed', reveal: true,  durationS: 3.5, holdS: 1.5, spinDeg: 0 },
+  { id: 'frm-3', name: '3D min tilt',                             enabled: true, rotationOrbit: 270, zoom: -0.57, rotationX: 0,  target: [-143, 6, 260],  layersMode: 'collapsed', reveal: false, durationS: 2.4, holdS: 1.2, spinDeg: 0 },
+  { id: 'frm-4', name: '3D min tilt exploded layers',            enabled: true, rotationOrbit: 270, zoom: -0.57, rotationX: 0,  target: [-143, 6, 260],  layersMode: 'exploded',  reveal: false, durationS: 1.8, holdS: 1.2, spinDeg: 0 },
+  { id: 'frm-5', name: '3D optimal tilt exploded layers',        enabled: true, rotationOrbit: 269, zoom: -0.57, rotationX: 11, target: [-143, 6, 260],  layersMode: 'exploded',  reveal: false, durationS: 1.6, holdS: 1.2, spinDeg: 0 },
+  { id: 'frm-6', name: '3D optimal tilt exploded + rotate 360°', enabled: true, rotationOrbit: 269, zoom: -0.57, rotationX: 11, target: [-143, 6, 260],  layersMode: 'exploded',  reveal: false, durationS: 0.6, holdS: 0.8, spinDeg: 360 },
+];
 
 const PROP_META = {
   tree:   { label: 'Tree',         icon: PROP_URLS.tree,   w: 64, h: 96, anchorY: 96, size: 8, defaultColor: '#38571a' },
@@ -335,13 +336,12 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     waitSec: 2,
   });
   const flyAbortRef = useRef(null);   // call to cancel an active tour
-  // Editable camera-tour stages — drives runFlyThrough. Each entry has
-  // an id (mapped to its hardcoded phase logic), a friendly label and
-  // description for the UI, an enabled flag, and an optional
-  // customDurationS override (null = derive duration from flyConfig).
-  const [tourStages, setTourStages] = useState(() => DEFAULT_TOUR_STAGES.map((s) => ({ ...s })));
+  // Drag state for reordering frame rows in the Camera-tour editor.
   const [tourStageDrag, setTourStageDrag] = useState(null);
   const [tourStageDragOver, setTourStageDragOver] = useState(null);
+  // Editable keyframe list driving the camera tour (see DEFAULT_TOUR_FRAMES).
+  // Persisted in the project settings.
+  const [tourFrames, setTourFrames] = useState(() => DEFAULT_TOUR_FRAMES.map((f) => ({ ...f, target: [...f.target] })));
   // Named camera bookmarks — Save view button stores {id, name, target,
   // rotationOrbit, rotationX, zoom}. Clicking a row in the Views panel
   // smoothly applies it; ✏ renames; × deletes. Round-trips through the
@@ -1401,7 +1401,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       numbersThrough, bldgFill, bldgLine, podiumFill, roadFill, roofWidth, edgeWidth, explodeGap,
       showTrees, fillCutouts, propsItems, propSizes, propColors, propAvoidIntersect, smartPlace,
       propLayers, activeLayerId, layersExploded, layerExplodeGap, showLayerPolygons, showLayerNames, layersInFront,
-      photoIncludeUi, flyConfig, tourStages, savedViews, viewOverrides,
+      photoIncludeUi, flyConfig, tourFrames, savedViews, viewOverrides,
       shape, size, basemapStyle,
       archBuildings, archRoads, archBasemap,
     },
@@ -1447,22 +1447,24 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
     if (typeof s.showLayerNames === 'boolean') setShowLayerNames(s.showLayerNames);
     if (typeof s.layersInFront === 'boolean') setLayersInFront(s.layersInFront);
     if (s.flyConfig && typeof s.flyConfig === 'object') setFlyConfig((f) => ({ ...f, ...s.flyConfig }));
-    if (Array.isArray(s.tourStages) && s.tourStages.length > 0) {
-      // Merge persisted stages with defaults so adding new built-in
-      // stages later doesn't strand old saved configs.
-      const known = new Map(DEFAULT_TOUR_STAGES.map((d) => [d.id, d]));
-      const seen = new Set();
-      const merged = [];
-      for (const ps of s.tourStages) {
-        const def = known.get(ps.id);
-        if (!def || seen.has(ps.id)) continue;
-        seen.add(ps.id);
-        merged.push({ ...def, ...ps });
-      }
-      for (const d of DEFAULT_TOUR_STAGES) {
-        if (!seen.has(d.id)) merged.push({ ...d });
-      }
-      setTourStages(merged);
+    if (Array.isArray(s.tourFrames)) {
+      // Frames are fully user-authored, so restore them verbatim (just
+      // normalise the few fields the runner relies on). An empty array is
+      // honoured — the user may have deleted every frame on purpose.
+      setTourFrames(s.tourFrames.map((f, i) => ({
+        id: f.id || `frm-${i + 1}`,
+        name: typeof f.name === 'string' ? f.name : `Frame ${i + 1}`,
+        enabled: f.enabled !== false,
+        rotationOrbit: Number(f.rotationOrbit) || 0,
+        zoom: Number(f.zoom) || 0,
+        rotationX: Number(f.rotationX) || 0,
+        target: Array.isArray(f.target) ? [Number(f.target[0]) || 0, Number(f.target[1]) || 0, Number(f.target[2]) || 0] : [0, 0, 0],
+        layersMode: ['hidden', 'collapsed', 'exploded'].includes(f.layersMode) ? f.layersMode : 'collapsed',
+        reveal: !!f.reveal,
+        durationS: Number.isFinite(Number(f.durationS)) ? Number(f.durationS) : 1.5,
+        holdS: Number.isFinite(Number(f.holdS)) ? Number(f.holdS) : 1.5,
+        spinDeg: Number(f.spinDeg) || 0,
+      })));
     }
     if (Array.isArray(s.savedViews)) setSavedViews(s.savedViews);
     if (s.viewOverrides && typeof s.viewOverrides === 'object') setViewOverrides(s.viewOverrides);
@@ -2560,32 +2562,28 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
   }
 
   const clampX = (x) => Math.max(0, Math.min(89, x));        // never go underground
-  // Run the camera tour described in the FlyThroughPanel. Each phase
-  // either applies an instant state change (showLayerPolygons toggle,
-  // layersExploded toggle, …) or smoothly interpolates viewState fields
-  // over `durationMs`. The runner uses rAF directly so the camera moves
-  // independently of React's commit cycle. Returns a cancel function.
-  const runFlyThrough = (cfg) => {
+
+  // Keyframe camera tour. Plays the user-editable `frames` in order: for
+  // each enabled frame it
+  // tweens the camera (orbit / zoom / tilt / target x,y,z) from the live
+  // state to the frame's absolute pose over durationS, applies the frame's
+  // layer mode (hidden / collapsed / exploded) plus an optional one-by-one
+  // reveal, holds for holdS, then — if spinDeg ≠ 0 — orbits that many
+  // degrees. Loops when cfg.loop. Returns a cancel function.
+  const runFrameTour = (frames, cfg) => {
     let cancelled = false;
-    const easeIn  = (t) => t * t;
-    const easeOut = (t) => 1 - (1 - t) * (1 - t);
     const easeInOut = (t) => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-    const tiltDuration = (a, b) => Math.max(200, Math.abs(b - a) / Math.max(1, cfg.tiltSpeed) * 1000);
-    const spinDuration = Math.max(300, 360 / Math.max(1, cfg.rotSpeed) * 1000);
-    const dwellMs = Math.max(0, (cfg.waitSec || 0) * 1000); // beat held at the end of each stage
-    const TWO_D_TILT = 89;   // top-down plan (the codebase treats rotationX > 80 as 2D)
-    // Explode / collapse the layer stack (slabs + floating names).
+    const num = (v, fb = 0) => (Number.isFinite(v) ? v : fb);
+    const lerp = (a, b, e) => a + (b - a) * e;
+    const spinMs = (deg) => Math.max(300, Math.abs(deg) / Math.max(1, cfg.rotSpeed || 36) * 1000);
+
     const explodeLayers  = () => { setLayersExploded(true);  setShowLayerPolygons(true);  setShowLayerNames(true); };
     const collapseLayers = () => { setLayersExploded(false); setShowLayerPolygons(false); setShowLayerNames(false); };
-
-    // Order the project's prop layers for the staggered 2D reveal. Match
-    // each TOUR_REVEAL_ORDER entry to a layer by name (normalised, with a
-    // lenient substring fallback); append any unmatched layers after, in
-    // their existing customization-list order, so every layer reveals.
+    const setAllLayersVisible = (vis) => setPropLayers((prev) => prev.map((l) => (l.visible === vis ? l : { ...l, visible: vis })));
+    // Project layers ordered for the staggered reveal (see TOUR_REVEAL_ORDER).
     const orderedRevealLayers = () => {
       const norm = (n) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const used = new Set();
-      const out = [];
+      const used = new Set(); const out = [];
       for (const want of TOUR_REVEAL_ORDER) {
         let l = propLayers.find((x) => !used.has(x.id) && norm(x.name) === want);
         if (!l) l = propLayers.find((x) => !used.has(x.id) && (norm(x.name).includes(want) || want.includes(norm(x.name))));
@@ -2594,9 +2592,6 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       for (const x of propLayers) if (!used.has(x.id)) out.push(x);
       return out;
     };
-    // Reveal exactly the first `count` ordered layers (the rest hidden).
-    // Skipped when unchanged so we only touch propLayers when a new layer
-    // crosses the threshold during the reveal.
     let revealedCount = -1;
     const setRevealCount = (count) => {
       const clamped = Math.max(0, Math.min(propLayers.length, count));
@@ -2605,73 +2600,40 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       const visibleIds = new Set(orderedRevealLayers().slice(0, clamped).map((l) => l.id));
       setPropLayers((prev) => prev.map((l) => ({ ...l, visible: visibleIds.has(l.id) })));
     };
-
-    // Build the run-time phase list from the user-editable tourStages.
-    // Each enabled stage maps to one (or, via `segments`, several) phases;
-    // customDurationS wins over the default move duration when provided.
-    // Every phase may hold for `holdMs` after its camera move completes so
-    // there are "some seconds at each stage". The sequence reads:
-    //   2D no layers → 2D reveal layers → 3D collapsed → min tilt →
-    //   min tilt exploded → opt tilt (wait, spin 360) → max tilt exploded →
-    //   max tilt collapsed → opt tilt collapsed → opt tilt exploded
-    //   (then loops, if cfg.loop).
-    const PHASE_LOGIC = {
-      view_2d_plain:  { defaultDurationMs: 1200, holdMs: dwellMs,
-                        onEnter: () => { collapseLayers(); setRevealCount(0); },
-                        target: () => ({ rotationX: clampX(TWO_D_TILT), zoom: cfg.collapsedZoom }), ease: easeInOut },
-      view_2d_reveal: { defaultDurationMs: 4000, holdMs: dwellMs, onEnter: collapseLayers,
-                        target: () => ({ rotationX: clampX(TWO_D_TILT), zoom: cfg.collapsedZoom }),
-                        onProgress: (e, t) => setRevealCount(Math.ceil(t * propLayers.length)), ease: easeInOut },
-      to_3d_collapsed:{ defaultDurationMs: tiltDuration(TWO_D_TILT, cfg.optTilt), holdMs: dwellMs, onEnter: collapseLayers,
-                        target: () => ({ rotationX: clampX(cfg.optTilt), zoom: cfg.collapsedZoom }), ease: easeInOut },
-      to_min_tilt:    { defaultDurationMs: tiltDuration(cfg.optTilt, cfg.minTilt), holdMs: dwellMs,
-                        target: () => ({ rotationX: clampX(cfg.minTilt), zoom: cfg.collapsedZoom }), ease: easeInOut },
-      min_tilt_explode:{ defaultDurationMs: 1800, holdMs: dwellMs, onEnter: explodeLayers,
-                        target: () => ({ rotationX: clampX(cfg.minTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
-      // Compound: rise from min → optimal tilt, hold (the "wait"), then orbit 360°.
-      opt_tilt_spin:  { segments: () => [
-                          { durationMs: tiltDuration(cfg.minTilt, cfg.optTilt), holdMs: dwellMs, onEnter: explodeLayers,
-                            target: () => ({ rotationX: clampX(cfg.optTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
-                          { durationMs: spinDuration, holdMs: 0,
-                            relTarget: (s) => ({ rotationOrbit: (Number.isFinite(s.rotationOrbit) ? s.rotationOrbit : 0) + 360 }), ease: easeInOut },
-                        ] },
-      max_tilt_explode:{ defaultDurationMs: tiltDuration(cfg.optTilt, cfg.maxTilt), holdMs: dwellMs, onEnter: explodeLayers,
-                        target: () => ({ rotationX: clampX(cfg.maxTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
-      max_tilt_collapse:{ defaultDurationMs: 1800, holdMs: dwellMs, onEnter: collapseLayers,
-                        target: () => ({ rotationX: clampX(cfg.maxTilt), zoom: cfg.collapsedZoom }), ease: easeInOut },
-      opt_tilt_collapse:{ defaultDurationMs: tiltDuration(cfg.maxTilt, cfg.optTilt), holdMs: dwellMs, onEnter: collapseLayers,
-                        target: () => ({ rotationX: clampX(cfg.optTilt), zoom: cfg.collapsedZoom }), ease: easeInOut },
-      opt_tilt_explode:{ defaultDurationMs: 1800, holdMs: dwellMs, onEnter: explodeLayers,
-                        target: () => ({ rotationX: clampX(cfg.optTilt), zoom: cfg.expandedZoom }), ease: easeInOut },
+    const applyLayerMode = (mode) => {
+      if (mode === 'exploded')   { setAllLayersVisible(true);  explodeLayers(); }
+      else if (mode === 'hidden') { setAllLayersVisible(false); collapseLayers(); }
+      else                        { setAllLayersVisible(true);  collapseLayers(); } // 'collapsed'
     };
-    const phases = tourStages
-      .filter((s) => s.enabled !== false && PHASE_LOGIC[s.id])
-      .flatMap((s) => {
-        const base = PHASE_LOGIC[s.id];
-        if (typeof base.segments === 'function') {
-          // Compound stage — expand into its ordered sub-phases. The
-          // per-stage customDurationS override doesn't apply here; each
-          // segment carries its own duration derived from flyConfig.
-          return base.segments().map((seg, k) => ({
-            name: `${s.id}:${k}`, instant: !!seg.instant,
-            durationMs: seg.durationMs ?? 0, holdMs: seg.holdMs ?? 0,
-            onEnter: seg.onEnter, target: seg.target, relTarget: seg.relTarget,
-            onProgress: seg.onProgress, ease: seg.ease,
-          }));
-        }
-        const durMs = (s.customDurationS != null && Number.isFinite(s.customDurationS))
-          ? Math.max(0, s.customDurationS * 1000)
-          : (base.defaultDurationMs ?? 0);
-        return [{ name: s.id, instant: !!base.instant, durationMs: durMs, holdMs: base.holdMs ?? 0,
-                  onEnter: base.onEnter, target: base.target, relTarget: base.relTarget,
-                  onProgress: base.onProgress, ease: base.ease }];
+
+    // Expand each frame into runtime phases: a camera move (with the layer
+    // mode / reveal applied) followed, if requested, by a spin.
+    const phases = [];
+    for (const f of frames) {
+      if (!f || f.enabled === false) continue;
+      const mode = ['hidden', 'collapsed', 'exploded'].includes(f.layersMode) ? f.layersMode : 'collapsed';
+      const reveal = !!f.reveal && mode === 'collapsed';
+      phases.push({
+        durationMs: Math.max(0, num(f.durationS, 1.5) * 1000),
+        holdMs: Math.max(0, num(f.holdS, cfg.waitSec) * 1000),
+        onEnter: () => {
+          if (reveal) { setAllLayersVisible(false); collapseLayers(); revealedCount = -1; setRevealCount(0); }
+          else applyLayerMode(mode);
+        },
+        onProgress: reveal ? (t) => setRevealCount(Math.ceil(t * propLayers.length)) : null,
+        abs: { rotationOrbit: num(f.rotationOrbit), zoom: num(f.zoom), rotationX: clampX(num(f.rotationX)),
+               target: [num(f.target?.[0]), num(f.target?.[1]), num(f.target?.[2])] },
       });
-    let i = 0, startMs = 0, fromVS = null, targetVS = null;
+      if (num(f.spinDeg) !== 0) {
+        phases.push({ durationMs: spinMs(num(f.spinDeg)), holdMs: 0, addOrbit: num(f.spinDeg) });
+      }
+    }
+
+    let i = 0, startMs = 0, fromVS = null, target = null;
     const step = (now) => {
       if (cancelled) return;
       if (phases.length === 0) { setFlyPlaying(false); return; }
       if (i >= phases.length) {
-        // End of the sequence — loop back to the top, or stop.
         if (cfg.loop === false) { setFlyPlaying(false); return; }
         i = 0; startMs = 0;
       }
@@ -2679,36 +2641,48 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       if (startMs === 0) {
         startMs = now;
         if (p.onEnter) p.onEnter();
-        if (p.instant) { i++; startMs = 0; requestAnimationFrame(step); return; }
-        // Snapshot the start state and compute the absolute target for
-        // this phase (target() may run after onEnter has changed state).
-        fromVS = { ...viewStateRef.current };
-        const t = p.target ? p.target() : (p.relTarget ? p.relTarget(fromVS) : null);
-        targetVS = t;
+        const live = viewStateRef.current || {};
+        const lt = Array.isArray(live.target) ? live.target : [0, 0, 0];
+        fromVS = { rotationOrbit: num(live.rotationOrbit), zoom: num(live.zoom), rotationX: num(live.rotationX),
+                   target: [num(lt[0]), num(lt[1]), num(lt[2])] };
+        target = p.addOrbit != null
+          ? { rotationOrbit: fromVS.rotationOrbit + p.addOrbit }   // spin: relative
+          : p.abs;                                                 // move: absolute pose
       }
       const moveMs = p.durationMs || 0;
       const holdMs = p.holdMs || 0;
       const elapsed = now - startMs;
       const tNorm = moveMs > 0 ? Math.min(1, elapsed / moveMs) : 1;
-      const e = p.ease ? p.ease(tNorm) : tNorm;
-      if (p.onProgress) p.onProgress(e, tNorm);
-      if (targetVS) {
-        const next = { ...fromVS };
-        for (const k of Object.keys(targetVS)) {
-          const a = Number.isFinite(fromVS[k]) ? fromVS[k] : 0;
-          const b = Number.isFinite(targetVS[k]) ? targetVS[k] : a;
-          next[k] = a + (b - a) * e;
-        }
-        if ('rotationX' in next) next.rotationX = clampX(next.rotationX);
-        setViewState((v) => ({ ...v, ...next }));
+      const e = easeInOut(tNorm);
+      if (p.onProgress) p.onProgress(tNorm);
+      const next = {};
+      if (Number.isFinite(target.rotationOrbit)) next.rotationOrbit = lerp(fromVS.rotationOrbit, target.rotationOrbit, e);
+      if (Number.isFinite(target.zoom))          next.zoom          = lerp(fromVS.zoom, target.zoom, e);
+      if (Number.isFinite(target.rotationX))     next.rotationX     = clampX(lerp(fromVS.rotationX, target.rotationX, e));
+      if (Array.isArray(target.target)) {
+        next.target = [
+          lerp(fromVS.target[0], num(target.target[0], fromVS.target[0]), e),
+          lerp(fromVS.target[1], num(target.target[1], fromVS.target[1]), e),
+          lerp(fromVS.target[2], num(target.target[2], fromVS.target[2]), e),
+        ];
       }
-      // Advance only once the camera move AND the post-move hold elapse.
+      setViewState((v) => ({ ...v, ...next }));
       if (elapsed >= moveMs + holdMs) { i++; startMs = 0; }
       requestAnimationFrame(step);
     };
     setFlyPlaying(true);
     requestAnimationFrame(step);
     return () => { cancelled = true; setFlyPlaying(false); };
+  };
+
+  // Snapshot the live camera into frame fields (rounded) — backs the
+  // "grab current view" button and seeds new frames in the editor.
+  const captureView = () => {
+    const v = viewStateRef.current || viewState;
+    const t = Array.isArray(v.target) ? v.target : [0, 0, 0];
+    const r = (n, d = 0) => { const x = Number(n); const m = 10 ** d; return Number.isFinite(x) ? Math.round(x * m) / m : 0; };
+    return { rotationOrbit: r(v.rotationOrbit), zoom: r(v.zoom, 2), rotationX: r(v.rotationX),
+             target: [r(t[0]), r(t[1]), r(t[2])] };
   };
 
   // Snapshot only the camera fields from the live viewState.
@@ -4159,8 +4133,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
             </summary>
             <CameraTourBody flyConfig={flyConfig} setFlyConfig={setFlyConfig}
                             flyPlaying={flyPlaying} flyAbortRef={flyAbortRef}
-                            runFlyThrough={runFlyThrough}
-                            tourStages={tourStages} setTourStages={setTourStages}
+                            runFrameTour={runFrameTour}
+                            tourFrames={tourFrames} setTourFrames={setTourFrames}
+                            captureView={captureView}
                             dragId={tourStageDrag} setDragId={setTourStageDrag}
                             dragOverId={tourStageDragOver} setDragOverId={setTourStageDragOver} />
           </details>
@@ -4172,8 +4147,9 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
       {tourTarget && createPortal(
         <CameraTourBody flyConfig={flyConfig} setFlyConfig={setFlyConfig}
                         flyPlaying={flyPlaying} flyAbortRef={flyAbortRef}
-                        runFlyThrough={runFlyThrough}
-                        tourStages={tourStages} setTourStages={setTourStages}
+                        runFrameTour={runFrameTour}
+                        tourFrames={tourFrames} setTourFrames={setTourFrames}
+                        captureView={captureView}
                         dragId={tourStageDrag} setDragId={setTourStageDrag}
                         dragOverId={tourStageDragOver} setDragOverId={setTourStageDragOver} />,
         tourTarget,
@@ -4283,7 +4259,7 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
                         flyAbortRef.current = null;
                       } else {
                         if (flyAbortRef.current) flyAbortRef.current();
-                        flyAbortRef.current = runFlyThrough(flyConfig);
+                        flyAbortRef.current = runFrameTour(tourFrames, flyConfig);
                       }
                     }}
                     style={{ ...btn, width: 28, height: 28, lineHeight: '26px',
@@ -4531,134 +4507,207 @@ export default function DeckOrbit3D({ geo, chrome = {}, freeOrbit, onFreeOrbitCh
 // Body of the Camera-tour controls. Shared between the inline <details>
 // (classic page) and the V2 left-sidebar portal mount so the JSX has
 // exactly one source of truth.
-function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runFlyThrough,
-                          tourStages, setTourStages,
+function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runFrameTour,
+                          tourFrames, setTourFrames, captureView,
                           dragId, setDragId, dragOverId, setDragOverId }) {
-  const updateStage = (id, patch) => {
-    setTourStages?.((arr) => arr.map((s) => s.id === id ? { ...s, ...patch } : s));
-  };
+  const frames = Array.isArray(tourFrames) ? tourFrames : [];
+  const updateFrame = (id, patch) => setTourFrames?.((arr) => arr.map((f) => f.id === id ? { ...f, ...patch } : f));
+  const setNum = (id, key) => (e) => updateFrame(id, { [key]: Number(e.target.value) });
+  const setTargetN = (id, idx) => (e) => setTourFrames?.((arr) => arr.map((f) => {
+    if (f.id !== id) return f;
+    const t = Array.isArray(f.target) ? [...f.target] : [0, 0, 0];
+    t[idx] = Number(e.target.value);
+    return { ...f, target: t };
+  }));
+  const grabInto = (id) => () => { const cam = captureView?.(); if (cam) updateFrame(id, cam); };
+  const addFrame = () => setTourFrames?.((arr) => {
+    const cam = captureView?.() || { rotationOrbit: 0, zoom: 0, rotationX: 55, target: [0, 0, 0] };
+    return [...arr, { id: `frm-${Date.now()}`, name: `Frame ${arr.length + 1}`, enabled: true,
+                      ...cam, layersMode: 'collapsed', reveal: false,
+                      durationS: 1.5, holdS: flyConfig.waitSec ?? 1.5, spinDeg: 0 }];
+  });
+  const removeFrame = (id) => setTourFrames?.((arr) => arr.filter((f) => f.id !== id));
+
+  // Compact numeric cell used across the camera / target / timing rows.
+  const lbl = { fontSize: 9.5, color: '#9a948a', display: 'block', lineHeight: 1.1, marginBottom: 1 };
+  const inp = { width: '100%', boxSizing: 'border-box', fontSize: 11, padding: '2px 3px',
+                textAlign: 'right', border: '1px solid var(--line)', borderRadius: 3 };
+  const field = (label, value, onChange, step = 1) => (
+    <label style={{ flex: 1, minWidth: 0 }}>
+      <span style={lbl}>{label}</span>
+      <input type="number" step={step} value={Number.isFinite(value) ? value : 0} onChange={onChange} style={inp} />
+    </label>
+  );
+
   return (
     <div style={{ paddingTop: 6, display: 'flex', flexDirection: 'column' }}>
-      {Array.isArray(tourStages) && tourStages.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#6f685c',
-                        letterSpacing: 0.4, padding: '2px 0 4px' }}>
-            STAGES
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 0 4px' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#6f685c', letterSpacing: 0.4 }}>FRAMES</span>
+        <button onClick={addFrame}
+                title="Add a frame (captures the current camera)"
+                style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--line)',
+                         borderRadius: 3, background: '#fff', cursor: 'pointer', color: '#3a342c' }}>
+          + Add frame
+        </button>
+      </div>
+
+      <div style={{ border: '1px solid var(--line)', borderRadius: 3 }}>
+        {frames.length === 0 && (
+          <div style={{ padding: '10px 8px', fontSize: 11, color: '#9a948a', textAlign: 'center' }}>
+            No frames yet — “+ Add frame” captures the current view.
           </div>
-          <div style={{ border: '1px solid var(--line)', borderRadius: 3 }}>
-            {tourStages.map((s, i) => {
-              const isDragging = dragId === s.id;
-              const isDragOver = dragOverId === s.id && dragId && dragId !== s.id;
-              return (
-                <div key={s.id}
-                     onDragOver={(e) => {
-                       if (!dragId || dragId === s.id) return;
-                       e.preventDefault();
-                       try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
-                       if (dragOverId !== s.id) setDragOverId?.(s.id);
-                     }}
-                     onDragLeave={() => { if (dragOverId === s.id) setDragOverId?.(null); }}
-                     onDrop={(e) => {
-                       e.preventDefault();
-                       const fromId = dragId;
-                       if (!fromId || fromId === s.id) return;
-                       setTourStages?.((arr) => {
-                         const from = arr.findIndex((x) => x.id === fromId);
-                         const to = arr.findIndex((x) => x.id === s.id);
-                         if (from < 0 || to < 0) return arr;
-                         const next = arr.slice();
-                         const [moved] = next.splice(from, 1);
-                         next.splice(to, 0, moved);
-                         return next;
-                       });
-                       setDragId?.(null); setDragOverId?.(null);
-                     }}
-                     style={{ display: 'flex', flexDirection: 'column',
-                              padding: '4px 6px 6px',
-                              borderTop: i === 0 ? 'none' : '1px solid var(--line)',
-                              opacity: (s.enabled === false ? 0.55 : 1) * (isDragging ? 0.45 : 1),
-                              boxShadow: isDragOver ? 'inset 0 2px 0 0 #4c8cdc' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span draggable
-                          onDragStart={(e) => {
-                            setDragId?.(s.id);
-                            try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', s.id); } catch (_) {}
-                          }}
-                          onDragEnd={() => { setDragId?.(null); setDragOverId?.(null); }}
-                          title="Drag to reorder"
-                          style={{ cursor: 'grab', color: '#bdb6a4', fontSize: 11, lineHeight: 1,
-                                   userSelect: 'none', padding: '0 4px',
-                                   display: 'inline-flex', alignItems: 'center',
-                                   touchAction: 'none' }}>
-                      ⋮⋮
-                    </span>
-                    <input type="checkbox" checked={s.enabled !== false}
-                           onChange={(e) => updateStage(s.id, { enabled: e.target.checked })}
-                           title={s.enabled === false ? 'Enable stage' : 'Disable stage'}
-                           style={{ margin: 0, cursor: 'pointer' }} />
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: '#3a342c',
-                                   whiteSpace: 'nowrap', overflow: 'hidden',
-                                   textOverflow: 'ellipsis' }}
-                          title={s.description}>
-                      <b>{i + 1}.</b> {s.label || s.id}
-                    </span>
-                    <input type="number" step={0.1} min={0}
-                           value={s.customDurationS ?? ''}
-                           placeholder="auto"
-                           onChange={(e) => {
-                             const v = e.target.value === '' ? null : Number(e.target.value);
-                             updateStage(s.id, { customDurationS: Number.isFinite(v) ? v : null });
-                           }}
-                           title="Override duration in seconds (blank = auto from tour config)"
-                           style={{ width: 50, fontSize: 11, padding: '1px 4px',
-                                    textAlign: 'right',
-                                    border: '1px solid var(--line)', borderRadius: 3 }} />
-                    <span style={{ color: '#9a948a', fontSize: 10, width: 8,
-                                   textAlign: 'left' }}>s</span>
-                  </div>
-                  <div style={{ paddingLeft: 26, marginTop: 2, fontSize: 10.5,
-                                color: '#9a948a', lineHeight: 1.3 }}>
-                    {s.description}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {[
-        ['Min tilt',          'minTilt',       0, 89,  1, '°'],
-        ['Optimal tilt',      'optTilt',       0, 89,  1, '°'],
-        ['Max tilt',          'maxTilt',       0, 89,  1, '°'],
-        ['Tilt speed',        'tiltSpeed',     1, 120, 1, '°/s'],
-        ['Rotation speed',    'rotSpeed',      1, 180, 1, '°/s'],
-        ['Expanded zoom',     'expandedZoom', -3,  6, 0.1, ''],
-        ['Collapsed zoom',    'collapsedZoom',-3,  6, 0.1, ''],
-        ['Wait at each pose', 'waitSec',       0, 30, 0.5, 's'],
-      ].map(([label, key, mn, mx, st, sx]) => (
-        <label key={key} style={{ display: 'flex', justifyContent: 'space-between',
-                                  alignItems: 'center', gap: 8, fontSize: 12,
-                                  padding: '3px 0', color: '#3a342c' }}>
-          <span>{label}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            <input type="number" step={st} min={mn} max={mx}
-                   value={flyConfig[key] ?? ''}
-                   onChange={(e) => setFlyConfig((c) => ({ ...c, [key]: Number(e.target.value) }))}
-                   style={{ width: 64, boxSizing: 'border-box', fontSize: 12, padding: '2px 4px',
-                            textAlign: 'right',
-                            border: '1px solid var(--line)', borderRadius: 3 }} />
-            <span style={{ width: 22, color: '#6f685c', fontSize: 11,
-                           textAlign: 'left', flexShrink: 0 }}>{sx || ''}</span>
-          </span>
-        </label>
-      ))}
+        )}
+        {frames.map((f, i) => {
+          const isDragging = dragId === f.id;
+          const isDragOver = dragOverId === f.id && dragId && dragId !== f.id;
+          const t = Array.isArray(f.target) ? f.target : [0, 0, 0];
+          const mode = f.layersMode || 'collapsed';
+          return (
+            <div key={f.id}
+                 onDragOver={(e) => {
+                   if (!dragId || dragId === f.id) return;
+                   e.preventDefault();
+                   try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+                   if (dragOverId !== f.id) setDragOverId?.(f.id);
+                 }}
+                 onDragLeave={() => { if (dragOverId === f.id) setDragOverId?.(null); }}
+                 onDrop={(e) => {
+                   e.preventDefault();
+                   const fromId = dragId;
+                   if (!fromId || fromId === f.id) return;
+                   setTourFrames?.((arr) => {
+                     const from = arr.findIndex((x) => x.id === fromId);
+                     const to = arr.findIndex((x) => x.id === f.id);
+                     if (from < 0 || to < 0) return arr;
+                     const next = arr.slice();
+                     const [moved] = next.splice(from, 1);
+                     next.splice(to, 0, moved);
+                     return next;
+                   });
+                   setDragId?.(null); setDragOverId?.(null);
+                 }}
+                 style={{ display: 'flex', flexDirection: 'column', gap: 4,
+                          padding: '5px 6px 7px',
+                          borderTop: i === 0 ? 'none' : '1px solid var(--line)',
+                          opacity: (f.enabled === false ? 0.55 : 1) * (isDragging ? 0.45 : 1),
+                          boxShadow: isDragOver ? 'inset 0 2px 0 0 #4c8cdc' : 'none' }}>
+              {/* Row 1: drag · skip · index · name · delete */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span draggable
+                      onDragStart={(e) => {
+                        setDragId?.(f.id);
+                        try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', f.id); } catch (_) {}
+                      }}
+                      onDragEnd={() => { setDragId?.(null); setDragOverId?.(null); }}
+                      title="Drag to reorder"
+                      style={{ cursor: 'grab', color: '#bdb6a4', fontSize: 11, lineHeight: 1,
+                               userSelect: 'none', padding: '0 2px', touchAction: 'none' }}>
+                  ⋮⋮
+                </span>
+                <input type="checkbox" checked={f.enabled !== false}
+                       onChange={(e) => updateFrame(f.id, { enabled: e.target.checked })}
+                       title={f.enabled === false ? 'Skipped — check to include' : 'Active — uncheck to skip'}
+                       style={{ margin: 0, cursor: 'pointer' }} />
+                <b style={{ fontSize: 11, color: '#6f685c' }}>{i + 1}.</b>
+                <input type="text" value={f.name ?? ''}
+                       onChange={(e) => updateFrame(f.id, { name: e.target.value })}
+                       placeholder={`Frame ${i + 1}`}
+                       style={{ flex: 1, minWidth: 0, fontSize: 11.5, padding: '2px 5px',
+                                border: '1px solid var(--line)', borderRadius: 3, color: '#3a342c' }} />
+                <button onClick={() => removeFrame(f.id)} title="Delete frame"
+                        style={{ fontSize: 13, lineHeight: 1, width: 20, height: 20, padding: 0,
+                                 border: '1px solid var(--line)', borderRadius: 3,
+                                 background: '#fff', cursor: 'pointer', color: '#b03030' }}>
+                  ×
+                </button>
+              </div>
+
+              {/* Row 2: camera — rot · zoom · tilt */}
+              <div style={{ display: 'flex', gap: 4 }}>
+                {field('rot°', f.rotationOrbit, setNum(f.id, 'rotationOrbit'), 1)}
+                {field('zoom', f.zoom, setNum(f.id, 'zoom'), 0.01)}
+                {field('tilt°', f.rotationX, setNum(f.id, 'rotationX'), 1)}
+              </div>
+              {/* Row 3: camera target — x · y · z · grab current view */}
+              <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end' }}>
+                {field('x', t[0], setTargetN(f.id, 0), 1)}
+                {field('y', t[1], setTargetN(f.id, 1), 1)}
+                {field('z', t[2], setTargetN(f.id, 2), 1)}
+                <button onClick={grabInto(f.id)} title="Set this frame's camera to the current live view"
+                        style={{ flexShrink: 0, fontSize: 10, padding: '3px 6px', height: 23,
+                                 border: '1px solid var(--line)', borderRadius: 3,
+                                 background: '#fff', cursor: 'pointer', color: '#3a342c' }}>
+                  ⊕ grab
+                </button>
+              </div>
+
+              {/* Row 4: layers mode · reveal-in-order */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+                <label style={{ flex: 1, minWidth: 0 }}>
+                  <span style={lbl}>layers</span>
+                  <select value={mode}
+                          onChange={(e) => updateFrame(f.id, { layersMode: e.target.value })}
+                          style={{ ...inp, textAlign: 'left' }}>
+                    <option value="hidden">Hidden</option>
+                    <option value="collapsed">Collapsed</option>
+                    <option value="exploded">Exploded</option>
+                  </select>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5,
+                                color: mode === 'collapsed' ? '#3a342c' : '#c4bfb4',
+                                whiteSpace: 'nowrap', paddingBottom: 3 }}
+                       title="Reveal the layers one by one in the named order (collapsed frames only)">
+                  <input type="checkbox" checked={!!f.reveal}
+                         disabled={mode !== 'collapsed'}
+                         onChange={(e) => updateFrame(f.id, { reveal: e.target.checked })}
+                         style={{ margin: 0 }} />
+                  reveal in order
+                </label>
+              </div>
+
+              {/* Row 5: timing — move-in · hold · animated rotation */}
+              <div style={{ display: 'flex', gap: 4 }}>
+                {field('move s', f.durationS, setNum(f.id, 'durationS'), 0.1)}
+                {field('hold s', f.holdS, setNum(f.id, 'holdS'), 0.1)}
+                {field('spin°', f.spinDeg, setNum(f.id, 'spinDeg'), 5)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Tour-wide controls */}
+      <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      gap: 8, fontSize: 12, padding: '6px 0 3px', color: '#3a342c' }}>
+        <span>Rotation speed (spins)</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <input type="number" step={1} min={1} max={360}
+                 value={flyConfig.rotSpeed ?? ''}
+                 onChange={(e) => setFlyConfig((c) => ({ ...c, rotSpeed: Number(e.target.value) }))}
+                 style={{ width: 64, boxSizing: 'border-box', fontSize: 12, padding: '2px 4px',
+                          textAlign: 'right', border: '1px solid var(--line)', borderRadius: 3 }} />
+          <span style={{ width: 22, color: '#6f685c', fontSize: 11 }}>°/s</span>
+        </span>
+      </label>
+      <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      gap: 8, fontSize: 12, padding: '3px 0', color: '#3a342c' }}>
+        <span>Default hold (new frames)</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <input type="number" step={0.5} min={0} max={30}
+                 value={flyConfig.waitSec ?? ''}
+                 onChange={(e) => setFlyConfig((c) => ({ ...c, waitSec: Number(e.target.value) }))}
+                 style={{ width: 64, boxSizing: 'border-box', fontSize: 12, padding: '2px 4px',
+                          textAlign: 'right', border: '1px solid var(--line)', borderRadius: 3 }} />
+          <span style={{ width: 22, color: '#6f685c', fontSize: 11 }}>s</span>
+        </span>
+      </label>
       <label style={{ display: 'flex', alignItems: 'center', gap: 7,
-                      padding: '6px 0', cursor: 'pointer', fontSize: 12,
-                      color: '#3a342c' }}>
+                      padding: '6px 0', cursor: 'pointer', fontSize: 12, color: '#3a342c' }}>
         <input type="checkbox" checked={flyConfig.loop !== false}
                onChange={(e) => setFlyConfig((c) => ({ ...c, loop: e.target.checked }))} />
         <span>Loop tour (restart at the end)</span>
       </label>
+
       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
         {flyPlaying ? (
           <button onClick={() => { if (flyAbortRef.current) flyAbortRef.current(); flyAbortRef.current = null; }}
@@ -4670,7 +4719,7 @@ function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runF
         ) : (
           <button onClick={() => {
                     if (flyAbortRef.current) flyAbortRef.current();
-                    flyAbortRef.current = runFlyThrough(flyConfig);
+                    flyAbortRef.current = runFrameTour?.(tourFrames, flyConfig);
                   }}
                   style={{ flex: 1, padding: '8px 12px', border: '1px solid #2f6f3e',
                            background: '#2f6f3e', color: '#fff', borderRadius: 4,
@@ -4678,6 +4727,9 @@ function CameraTourBody({ flyConfig, setFlyConfig, flyPlaying, flyAbortRef, runF
             ▶ Play
           </button>
         )}
+      </div>
+      <div style={{ fontSize: 10, color: '#9a948a', marginTop: 6, lineHeight: 1.35 }}>
+        Edits stay local until you press <b>Save settings</b> (right toolbar), which stores the frames in the database.
       </div>
     </div>
   );
